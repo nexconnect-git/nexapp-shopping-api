@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            font-family: Helvetica, sans-serif;
+            font-size: 14px;
+            color: #333;
+        }
+        .header {
+            text-align: center;
+            border-bottom: 2px solid #333;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        .invoice-details {
+            margin-bottom: 30px;
+        }
+        .invoice-details table {
+            width: 100%;
+        }
+        .invoice-details td {
+            padding: 5px;
+        }
+        table.items {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        table.items th, table.items td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        table.items th {
+            background-color: #f2f2f2;
+        }
+        .total-row td {
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>VENDOR SETTLEMENT INVOICE</h1>
+        <h2>NexConnect Shopping App</h2>
+    </div>
+
+    <div class="invoice-details">
+        <table>
+            <tr>
+                <td><strong>Invoice Number:</strong> {{ invoice.invoice_number }}</td>
+                <td><strong>Date:</strong> {{ invoice.issued_at|date:"Y-m-d" }}</td>
+            </tr>
+            <tr>
+                <td><strong>Vendor:</strong> {{ vendor.store_name }}</td>
+                <td><strong>Status:</strong> Settlement Payment</td>
+            </tr>
+        </table>
+    </div>
+
+    <table class="items">
+        <thead>
+            <tr>
+                <th>Order Ref</th>
+                <th>Payment Status</th>
+                <th>Amount</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>{{ order.order_number }}</td>
+                <td>Completed</td>
+                <td>${{ invoice.amount }}</td>
+            </tr>
+            <tr class="total-row">
+                <td colspan="2" style="text-align: right;">Commission/Fees Deducted:</td>
+                <td>${{ invoice.tax_amount }}</td>
+            </tr>
+            <tr class="total-row">
+                <td colspan="2" style="text-align: right;">Net Payout Amount:</td>
+                <td>${{ invoice.amount }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div style="margin-top: 50px; text-align: center; color: #777; font-size: 12px;">
+        <p>This is a system generated vendor settlement statement.</p>
+    </div>
+</body>
+</html>
+
+<!-- aria-label -->

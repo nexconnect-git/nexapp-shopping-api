@@ -58,7 +58,9 @@ class Product(models.Model):
 
     @property
     def in_stock(self):
-        return self.stock > 0
+        if not self.is_available:
+            return False
+        return True if self.stock >= 0 else False
 
 
 class ProductImage(models.Model):

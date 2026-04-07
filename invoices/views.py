@@ -1,8 +1,4 @@
 import io
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-from reportlab.lib.utils import simpleSplit
-
 from django.core.files.base import ContentFile
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponse
@@ -15,84 +11,60 @@ from rest_framework.response import Response
 from accounts.permissions import IsAdminRole
 from .models import Invoice
 from .serializers import InvoiceSerializer
-
-
-def _generate_pdf_bytes(invoice: Invoice) -> bytes:
-    buf = io.BytesIO()
-    c = canvas.Canvas(buf, pagesize=letter)
-    width, height = letter
-
-    # Header
-    c.setFont("Helvetica-Bold", 16)
-    c.drawString(50, height - 50, "NexConnect Platform")
-    
-    c.setFont("Helvetica", 12)
-    c.drawString(50, height - 70, f"Invoice #: {invoice.invoice_number}")
-    c.drawString(50, height - 85, f"Type: {invoice.get_invoice_type_display()}")
-    c.drawString(50, height - 100, f"Date: {invoice.issued_at.strftime('%Y-%m-%d %H:%M')}")
-    
-    # Billing info
-    c.drawString(50, height - 130, "Bill To:")
-    if invoice.recipient:
-        c.drawString(50, height - 145, f"{invoice.recipient.get_full_name()} ({invoice.recipient.email})")
-    elif invoice.vendor:
-        c.drawString(50, height - 145, f"{invoice.vendor.store_name}")
-    
-    # Details
-    y = height - 190
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(50, y, "Description")
-    c.drawString(400, y, "Amount")
-    
-    y -= 25
-    c.setFont("Helvetica", 12)
-    desc = f"{invoice.get_invoice_type_display()}"
-    if invoice.order:
-        desc += f" for Order {invoice.order.order_number}"
-    
-    lines = simpleSplit(desc, "Helvetica", 12, 330)
-    for line in lines:
-        c.drawString(50, y, line)
-        y -= 15
-        
-    c.drawString(400, y + len(lines)*15, f"${invoice.amount:.2f}")
-    
-    y -= 30
-    c.drawString(300, y, "Tax:")
-    c.drawString(400, y, f"${invoice.tax_amount:.2f}")
-    
-    y -= 20
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(300, y, "Total:")
-    c.drawString(400, y, f"${(invoice.amount + invoice.tax_amount):.2f}")
-    
-    if invoice.notes:
-        y -= 50
-        c.setFont("Helvetica", 10)
-        c.drawString(50, y, "Notes:")
-        notes_lines = simpleSplit(invoice.notes, "Helvetica", 10, 500)
-        for line in notes_lines:
-            y -= 15
-            c.drawString(50, y, line)
-
-    c.save()
-    return buf.getvalue()
+from .utils import generate_pdf_invoice
 
 
 class InvoiceGenerateView(APIView):
-    """POST /api/invoices/generate/  (Admin mostly, but could be internal)"""
-    permission_classes = [IsAuthenticated, IsAdminRole]
+    """POST /api/invoices/generate/
+    Admins can generate any invoice.
+    Vendors can generate invoices for orders belonging to their store.
+    Customers can generate receipts for their own orders.
+    """
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        serializer = InvoiceSerializer(data=request.data)
+        from orders.models import Order as OrderModel
+
+        user = request.user
+        data = request.data.copy()
+
+        # Resolve the order and enforce ownership for non-admins
+        if getattr(user, 'role', '') != 'admin' and not user.is_superuser:
+            invoice_type = data.get('invoice_type')
+            
+            # Allow vendor settlement statements without an order
+            if invoice_type == 'vendor_settlement' and hasattr(user, 'vendor_profile'):
+                data.setdefault('vendor', str(user.vendor_profile.id))
+            
+            else:
+                # Default behavior: require order and validate ownership
+                order_id = data.get('order')
+                if not order_id:
+                    return Response({'error': 'order is required.'}, status=status.HTTP_400_BAD_REQUEST)
+                try:
+                    order = OrderModel.objects.select_related('vendor', 'customer').get(pk=order_id)
+                except OrderModel.DoesNotExist:
+                    return Response({'error': 'Order not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+                if hasattr(user, 'vendor_profile') and order.vendor == user.vendor_profile:
+                    data.setdefault('vendor', str(user.vendor_profile.id))
+                elif order.customer == user:
+                    pass
+                else:
+                    return Response(
+                        {'error': 'You do not have permission to generate an invoice for this order.'},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+
+        serializer = InvoiceSerializer(data=data)
         serializer.is_valid(raise_exception=True)
         invoice = serializer.save()
-        
-        pdf_bytes = _generate_pdf_bytes(invoice)
-        filename = f"{invoice.invoice_number}.pdf"
-        invoice.pdf_file.save(filename, ContentFile(pdf_bytes))
-        
-        return Response(InvoiceSerializer(invoice).data, status=status.HTTP_201_CREATED)
+
+        updated_invoice = generate_pdf_invoice(invoice.id)
+        if not updated_invoice:
+            return Response({'error': 'Failed to generate PDF'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return Response(InvoiceSerializer(updated_invoice).data, status=status.HTTP_201_CREATED)
 
 
 class InvoiceDownloadView(APIView):

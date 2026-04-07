@@ -17,6 +17,7 @@ class User(AbstractUser):
     is_verified = models.BooleanField(default=False)
     force_password_change = models.BooleanField(default=False)
     temp_password = models.CharField(max_length=128, blank=True, default='')
+    country = models.CharField(max_length=2, blank=True, default='US')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

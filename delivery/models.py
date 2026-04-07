@@ -1,5 +1,6 @@
 import uuid
 from django.db import models
+from django.utils import timezone
 from accounts.models import User
 
 
@@ -24,11 +25,12 @@ class DeliveryPartner(models.Model):
     is_approved = models.BooleanField(default=False)
     is_available = models.BooleanField(default=False)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='offline')
-    current_latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
-    current_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    current_latitude = models.DecimalField(max_digits=11, decimal_places=8, null=True, blank=True)
+    current_longitude = models.DecimalField(max_digits=11, decimal_places=8, null=True, blank=True)
     average_rating = models.DecimalField(max_digits=3, decimal_places=2, default=0)
     total_deliveries = models.IntegerField(default=0)
     total_earnings = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    wallet_balance = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -97,3 +99,38 @@ class Asset(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.asset_type})"
+
+
+class DeliveryAssignment(models.Model):
+    """Tracks the radius-based partner search for an order."""
+    STATUS_CHOICES = [
+        ('searching', 'Searching'),
+        ('notified', 'Partners Notified'),
+        ('accepted', 'Accepted'),
+        ('timed_out', 'Timed Out - No Response'),
+        ('failed', 'Failed - No Partners Found'),
+        ('cancelled', 'Cancelled'),
+    ]
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    order = models.OneToOneField(
+        'orders.Order', on_delete=models.CASCADE, related_name='assignment'
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='searching')
+    current_radius_km = models.FloatField(default=2.0)
+    max_radius_km = models.FloatField(default=20.0)
+    notified_partners = models.ManyToManyField(
+        DeliveryPartner, blank=True, related_name='notified_assignments'
+    )
+    rejected_partners = models.ManyToManyField(
+        DeliveryPartner, blank=True, related_name='rejected_assignments'
+    )
+    accepted_partner = models.ForeignKey(
+        DeliveryPartner, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='accepted_assignment'
+    )
+    last_search_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Assignment for {self.order.order_number} [{self.status}]"

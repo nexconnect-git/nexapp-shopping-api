@@ -14,6 +14,7 @@ urlpatterns = [
     path('api/support/', include('support.urls')),
     path('api/invoices/', include('invoices.urls')),
     path('api/admin/', include('backend.admin_urls')),
+    path('django-rq/', include('django_rq.urls')),
 ]
 
 if settings.DEBUG:

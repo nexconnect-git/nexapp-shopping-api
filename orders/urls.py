@@ -1,7 +1,14 @@
-from django.urls import path
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
 from . import views
 
+router = DefaultRouter()
+router.register(r'admin-coupons', views.AdminCouponViewSet, basename='admin-coupon')
+
 urlpatterns = [
+    path('coupons/', views.CustomerCouponListView.as_view(), name='coupon-list'),
+    path('coupons/validate/', views.ValidateCouponView.as_view(), name='coupon-validate'),
+    path('', include(router.urls)),
     path('cart/', views.CartView.as_view(), name='cart'),
     path('cart/add/', views.AddToCartView.as_view(), name='cart-add'),
     path('cart/items/<uuid:pk>/', views.UpdateCartItemView.as_view(), name='cart-item-update'),
@@ -11,4 +18,10 @@ urlpatterns = [
     path('<uuid:pk>/', views.OrderDetailView.as_view(), name='order-detail'),
     path('<uuid:pk>/cancel/', views.CancelOrderView.as_view(), name='order-cancel'),
     path('<uuid:pk>/tracking/', views.OrderTrackingView.as_view(), name='order-tracking'),
+    path('<uuid:pk>/payment-qr/', views.OrderPaymentQRView.as_view(), name='order-payment-qr'),
+    path('<uuid:pk>/rate/', views.SubmitOrderRatingView.as_view(), name='order-rate'),
+    # Order Issues
+    path('issues/', views.CustomerOrderIssueListCreateView.as_view(), name='issue-list'),
+    path('issues/<uuid:pk>/', views.CustomerOrderIssueDetailView.as_view(), name='issue-detail'),
+    path('issues/<uuid:pk>/messages/', views.IssueMessageCreateView.as_view(), name='issue-message'),
 ]

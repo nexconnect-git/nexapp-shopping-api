@@ -10,8 +10,8 @@ urlpatterns = [
     path('list/', views.ProductListView.as_view(), name='product-list'),
     path('featured/', views.FeaturedProductsView.as_view(), name='featured-products'),
     path('ai-image/', views.AIImageGenerateView.as_view(), name='ai-image-generate'),
-    path('<uuid:product_id>/', include(review_router.urls)),
     path('<uuid:pk>/', views.ProductDetailView.as_view(), name='product-detail'),
+    path('<uuid:product_id>/', include(review_router.urls)),
     # Vendor image management
     path('<uuid:pk>/images/', views.VendorProductImagesView.as_view(), name='vendor-product-images'),
     path('<uuid:pk>/images/<uuid:img_pk>/', views.VendorProductImageDetailView.as_view(), name='vendor-product-image-detail'),

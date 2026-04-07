@@ -8,6 +8,7 @@ class Notification(models.Model):
     TYPE_CHOICES = (
         ('order', 'Order Update'),
         ('delivery', 'Delivery Update'),
+        ('payout', 'Payout Update'),
         ('promo', 'Promotion'),
         ('system', 'System'),
     )

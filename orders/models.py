@@ -60,6 +60,12 @@ class Order(models.Model):
     delivery_partner = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True, related_name='deliveries'
     )
+    vendor_payout = models.ForeignKey(
+        'vendors.VendorPayout', on_delete=models.SET_NULL, null=True, blank=True, related_name='orders'
+    )
+    delivery_payout = models.ForeignKey(
+        'vendors.DeliveryPartnerPayout', on_delete=models.SET_NULL, null=True, blank=True, related_name='orders'
+    )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='placed')
     subtotal = models.DecimalField(max_digits=10, decimal_places=2)
     delivery_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
@@ -69,7 +75,12 @@ class Order(models.Model):
         ('cod', 'Cash on Delivery'),
     )
     payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES, default='cod')
+    coupon = models.ForeignKey(
+        'Coupon', on_delete=models.SET_NULL, null=True, blank=True, related_name='orders'
+    )
+    coupon_discount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     notes = models.TextField(blank=True)
+    pickup_otp = models.CharField(max_length=6, blank=True, default='')
     delivery_otp = models.CharField(max_length=6, blank=True, default='')
     delivery_photo = models.ImageField(upload_to='delivery_photos/', null=True, blank=True)
     estimated_delivery_time = models.IntegerField(help_text='Estimated minutes', null=True, blank=True)
@@ -104,6 +115,77 @@ class OrderItem(models.Model):
         return f"{self.quantity}x {self.product_name}"
 
 
+class Coupon(models.Model):
+    DISCOUNT_TYPE_CHOICES = [
+        ('percentage', 'Percentage'),
+        ('fixed', 'Fixed Amount'),
+        ('free_delivery', 'Free Delivery'),
+    ]
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    code = models.CharField(max_length=50, unique=True)
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    discount_type = models.CharField(max_length=20, choices=DISCOUNT_TYPE_CHOICES, default='percentage')
+    discount_value = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    min_order_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    max_discount_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    # If vendor is set, this coupon is vendor-specific; None = platform-wide (admin)
+    vendor = models.ForeignKey(
+        'vendors.Vendor', on_delete=models.CASCADE, null=True, blank=True, related_name='coupons'
+    )
+    is_active = models.BooleanField(default=True)
+    usage_limit = models.PositiveIntegerField(null=True, blank=True, help_text='Blank = unlimited')
+    per_user_limit = models.PositiveIntegerField(default=1, help_text='Max uses per customer')
+    used_count = models.PositiveIntegerField(default=0)
+    valid_from = models.DateTimeField()
+    valid_until = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='created_coupons')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.code} — {self.title}"
+
+    def calculate_discount(self, order_total):
+        """Return the discount amount for a given order total."""
+        from decimal import Decimal
+        total = Decimal(str(order_total))
+        if self.discount_type == 'free_delivery':
+            return Decimal('0')  # handled separately
+        if self.discount_type == 'percentage':
+            discount = total * (self.discount_value / 100)
+        else:  # fixed
+            discount = self.discount_value
+        if self.max_discount_amount:
+            discount = min(discount, self.max_discount_amount)
+        return min(discount, total)
+
+
+class CouponUsage(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    coupon = models.ForeignKey(Coupon, on_delete=models.CASCADE, related_name='usages')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='coupon_usages')
+    order = models.ForeignKey('Order', on_delete=models.CASCADE, related_name='coupon_usages')
+    discount_applied = models.DecimalField(max_digits=10, decimal_places=2)
+    used_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.coupon.code} used by {self.user.username}"
+
+
+class OrderRating(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name='rating')
+    customer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='order_ratings')
+    delivery_partner = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='received_ratings'
+    )
+    rating = models.PositiveSmallIntegerField()  # 1–5
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Rating {self.rating}★ for {self.order.order_number}"
+
+
 class OrderTracking(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='tracking')
@@ -118,3 +200,57 @@ class OrderTracking(models.Model):
 
     def __str__(self):
         return f"{self.order.order_number} - {self.status}"
+
+
+class OrderIssue(models.Model):
+    ISSUE_TYPE_CHOICES = [
+        ('return', 'Return Request'),
+        ('refund', 'Refund Request'),
+        ('damage', 'Damaged Item'),
+        ('mismatch', 'Item Mismatch'),
+    ]
+    STATUS_CHOICES = [
+        ('open', 'Open'),
+        ('in_review', 'In Review'),
+        ('resolved', 'Resolved'),
+        ('rejected', 'Rejected'),
+        ('refund_initiated', 'Refund Initiated'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='issues')
+    customer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='order_issues')
+    issue_type = models.CharField(max_length=20, choices=ISSUE_TYPE_CHOICES)
+    description = models.TextField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open')
+    # Admin resolution fields
+    admin_notes = models.TextField(blank=True)
+    refund_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    refund_method = models.CharField(max_length=100, blank=True)
+    resolved_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='resolved_issues'
+    )
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.get_issue_type_display()} — {self.order.order_number}"
+
+
+class IssueMessage(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    issue = models.ForeignKey(OrderIssue, on_delete=models.CASCADE, related_name='messages')
+    sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='issue_messages')
+    is_admin = models.BooleanField(default=False)
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"Message on issue {self.issue_id} by {self.sender.username}"

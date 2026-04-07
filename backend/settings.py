@@ -10,6 +10,7 @@ DEBUG = True
 ALLOWED_HOSTS = ['*']
 
 INSTALLED_APPS = [
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -27,6 +28,8 @@ INSTALLED_APPS = [
     'notifications',
     'support',
     'invoices',
+    'django_rq',
+    'channels',
 ]
 
 MIDDLEWARE = [
@@ -59,6 +62,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'backend.wsgi.application'
+ASGI_APPLICATION = 'backend.asgi.application'
 
 DATABASES = {
     'default': {
@@ -127,3 +131,23 @@ DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@nexconnect.co
 
 # FCM Configuration
 FCM_SERVER_KEY = os.environ.get('FCM_SERVER_KEY', '')
+
+# RQ Settings
+RQ_QUEUES = {
+    'default': {
+        'HOST': os.environ.get('REDIS_HOST', 'localhost'),
+        'PORT': int(os.environ.get('REDIS_PORT', 6379)),
+        'DB': 0,
+        'DEFAULT_TIMEOUT': 360,
+    },
+}
+
+# Channels Configuration
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            "hosts": [(os.environ.get('REDIS_HOST', '127.0.0.1'), int(os.environ.get('REDIS_PORT', 6379)))],
+        },
+    },
+}

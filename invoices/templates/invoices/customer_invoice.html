@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            font-family: Helvetica, sans-serif;
+            font-size: 14px;
+            color: #333;
+        }
+        .header {
+            text-align: center;
+            border-bottom: 2px solid #333;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        .invoice-details {
+            margin-bottom: 30px;
+        }
+        .invoice-details table {
+            width: 100%;
+        }
+        .invoice-details td {
+            padding: 5px;
+        }
+        table.items {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        table.items th, table.items td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        table.items th {
+            background-color: #f2f2f2;
+        }
+        .total-row td {
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>RECEIPT / INVOICE</h1>
+        <h2>NexConnect Shopping App</h2>
+    </div>
+
+    <div class="invoice-details">
+        <table>
+            <tr>
+                <td><strong>Invoice Number:</strong> {{ invoice.invoice_number }}</td>
+                <td><strong>Date:</strong> {{ invoice.issued_at|date:"Y-m-d" }}</td>
+            </tr>
+            <tr>
+                <td><strong>Order ID:</strong> {{ order.order_number }}</td>
+                <td><strong>Customer:</strong> {{ recipient.username }}</td>
+            </tr>
+        </table>
+    </div>
+
+    <table class="items">
+        <thead>
+            <tr>
+                <th>Item</th>
+                <th>Quantity</th>
+                <th>Price</th>
+                <th>Subtotal</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                <td>{{ item.product_name }}</td>
+                <td>{{ item.quantity }}</td>
+                <td>${{ item.product_price }}</td>
+                <td>${{ item.subtotal }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="4">No items found.</td>
+            </tr>
+            {% endfor %}
+            <tr class="total-row">
+                <td colspan="3" style="text-align: right;">Subtotal:</td>
+                <td>${{ order.subtotal }}</td>
+            </tr>
+            <tr>
+                <td colspan="3" style="text-align: right;">Delivery Fee:</td>
+                <td>${{ order.delivery_fee }}</td>
+            </tr>
+            <tr>
+                <td colspan="3" style="text-align: right;">Discount:</td>
+                <td>-${{ order.discount }}</td>
+            </tr>
+            <tr class="total-row">
+                <td colspan="3" style="text-align: right;">Total Amount:</td>
+                <td>${{ order.total }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div style="margin-top: 50px; text-align: center; color: #777; font-size: 12px;">
+        <p>Thank you for shopping with NexConnect!</p>
+    </div>
+</body>
+</html>

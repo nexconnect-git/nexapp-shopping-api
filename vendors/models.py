@@ -123,6 +123,7 @@ class Vendor(models.Model):
     is_featured    = models.BooleanField(default=False)
     average_rating = models.DecimalField(max_digits=3, decimal_places=2, default=0)
     total_ratings  = models.IntegerField(default=0)
+    wallet_balance = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
     # ── Operating hours ───────────────────────────────────────────────────────
     is_open       = models.BooleanField(default=True)
@@ -140,6 +141,9 @@ class Vendor(models.Model):
     packaging_preferences    = models.TextField(blank=True)
     auto_order_acceptance    = models.BooleanField(default=False)
     cancellation_rules       = models.TextField(blank=True)
+
+    # ── Stock check gate (admin-controlled) ───────────────────────────────────
+    require_stock_check      = models.BooleanField(default=False)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -345,10 +349,12 @@ class VendorReview(models.Model):
 # ── Payouts ───────────────────────────────────────────────────────────────────
 
 PAYOUT_STATUS_CHOICES = (
-    ('pending',    'Pending'),
-    ('processing', 'Processing'),
-    ('paid',       'Paid'),
-    ('failed',     'Failed'),
+    ('pending_approval', 'Pending Vendor Approval'),
+    ('approved',         'Approved by Vendor'),
+    ('scheduled',        'Scheduled for Processing'),
+    ('paid',             'Payment Dispatched — Awaiting Verification'),
+    ('verified',         'Verified'),
+    ('failed',           'Failed'),
 )
 
 class VendorPayout(models.Model):
@@ -359,9 +365,14 @@ class VendorPayout(models.Model):
     gross_sales = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     platform_commission = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     net_payout = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    status = models.CharField(max_length=20, choices=PAYOUT_STATUS_CHOICES, default='pending')
+    status = models.CharField(max_length=20, choices=PAYOUT_STATUS_CHOICES, default='pending_approval')
     transaction_ref = models.CharField(max_length=100, blank=True)
     paid_at = models.DateTimeField(null=True, blank=True)
+    # Approval & verification lifecycle fields
+    vendor_approved_at = models.DateTimeField(null=True, blank=True)
+    payment_sent_at = models.DateTimeField(null=True, blank=True)
+    vendor_verified_at = models.DateTimeField(null=True, blank=True)
+    vendor_rejection_reason = models.CharField(max_length=500, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -378,9 +389,14 @@ class DeliveryPartnerPayout(models.Model):
     period_end = models.DateTimeField()
     total_deliveries = models.IntegerField(default=0)
     total_earnings = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    status = models.CharField(max_length=20, choices=PAYOUT_STATUS_CHOICES, default='pending')
+    status = models.CharField(max_length=20, choices=PAYOUT_STATUS_CHOICES, default='pending_approval')
     transaction_ref = models.CharField(max_length=100, blank=True)
     paid_at = models.DateTimeField(null=True, blank=True)
+    # Approval & verification lifecycle fields
+    partner_approved_at = models.DateTimeField(null=True, blank=True)
+    payment_sent_at = models.DateTimeField(null=True, blank=True)
+    partner_verified_at = models.DateTimeField(null=True, blank=True)
+    partner_rejection_reason = models.CharField(max_length=500, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
