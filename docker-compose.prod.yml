@@ -28,7 +28,7 @@ services:
 
   backend:
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile
     command: sh -c "python manage.py collectstatic --noinput && python manage.py migrate && daphne -b 0.0.0.0 -p 8000 backend.asgi:application"
     volumes:
@@ -43,7 +43,7 @@ services:
 
   worker:
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile
     command: python manage.py rqworker default
     depends_on:
@@ -55,7 +55,7 @@ services:
 
   scheduler:
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile
     command: python manage.py rqscheduler
     depends_on:
