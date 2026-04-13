@@ -45,3 +45,15 @@ class IsApprovedVendor(BasePermission):
         if not hasattr(request.user, 'vendor_profile') or request.user.vendor_profile is None:
             return False
         return request.user.vendor_profile.status == 'approved'
+
+
+class IsDeliveryPartner(BasePermission):
+    """Allows access only to users who have an associated delivery profile."""
+    message = 'You must have a delivery partner profile to access this resource.'
+
+    def has_permission(self, request, view):
+        if not (request.user and request.user.is_authenticated):
+            return False
+        return hasattr(request.user, 'delivery_profile') and (
+            request.user.delivery_profile is not None
+        )

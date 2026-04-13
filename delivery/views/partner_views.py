@@ -4,6 +4,7 @@ from rest_framework import generics, status, viewsets
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from accounts.permissions import IsDeliveryPartner
 
 from backend.utils import haversine
 from delivery.models import DeliveryAssignment, DeliveryEarning, DeliveryReview
@@ -30,7 +31,7 @@ class DeliveryPartnerRegistrationView(APIView):
 
 
 class DeliveryDashboardView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsDeliveryPartner]
 
     def get(self, request):
         partner = request.user.delivery_profile
@@ -50,7 +51,7 @@ class DeliveryDashboardView(APIView):
 
 
 class AvailableOrdersView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsDeliveryPartner]
 
     def get(self, request):
         partner = request.user.delivery_profile
@@ -77,7 +78,7 @@ class AvailableOrdersView(APIView):
 
 
 class UpdateLocationView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsDeliveryPartner]
 
     def post(self, request):
         serializer = UpdateLocationSerializer(data=request.data)
@@ -100,7 +101,7 @@ class UpdateLocationView(APIView):
 
 
 class SetAvailabilityView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsDeliveryPartner]
 
     def post(self, request):
         partner = request.user.delivery_profile
@@ -118,7 +119,7 @@ class SetAvailabilityView(APIView):
 
 
 class DeliveryHistoryView(generics.ListAPIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsDeliveryPartner]
     serializer_class = OrderSerializer
 
     def get_queryset(self):
@@ -127,7 +128,7 @@ class DeliveryHistoryView(generics.ListAPIView):
 
 
 class DeliveryEarningsView(generics.ListAPIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsDeliveryPartner]
     serializer_class = DeliveryEarningSerializer
 
     def get_queryset(self):
@@ -136,7 +137,7 @@ class DeliveryEarningsView(generics.ListAPIView):
 
 class DeliveryReviewViewSet(viewsets.ModelViewSet):
     serializer_class = DeliveryReviewSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsDeliveryPartner]
 
     def get_queryset(self):
         partner_id = self.kwargs.get("partner_id")
