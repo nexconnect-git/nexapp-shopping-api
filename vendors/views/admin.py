@@ -8,9 +8,25 @@ from datetime import timedelta
 from django.db.models import Sum, Count, Q
 
 from accounts.permissions import IsAdminRole
-from vendors.serializers.admin import AdminVendorSerializer
+from vendors.serializers.admin import AdminVendorSerializer, VendorFullOnboardSerializer
 from vendors.serializers.public import VendorRegistrationSerializer
 from vendors.data import VendorRepository
+
+class AdminVendorOnboardView(APIView):
+    """POST /api/admin/vendors/onboard/ — Create a full vendor account via Admin"""
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    def post(self, request):
+        serializer = VendorFullOnboardSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        vendor = serializer.save()
+        
+        # We attach the auto-generated password if one was produced
+        response_data = AdminVendorSerializer(vendor).data
+        if hasattr(vendor, 'auto_generated_password'):
+            response_data['temporary_password'] = vendor.auto_generated_password
+            
+        return Response(response_data, status=status.HTTP_201_CREATED)
 
 class AdminVendorListView(APIView):
     permission_classes = [IsAuthenticated, IsAdminRole]

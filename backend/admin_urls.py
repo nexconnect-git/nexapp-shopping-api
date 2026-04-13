@@ -13,6 +13,7 @@ from vendors.views import (
     AdminVendorListView,
     AdminVendorDetailView,
     AdminVendorSalesReportView,
+    AdminVendorOnboardView,
     AdminVendorPayoutListView,
     AdminVendorPayoutDetailView,
     AdminVendorPayoutScheduleView,
@@ -71,6 +72,7 @@ urlpatterns = [
 
     # Vendors — CRUD
     path('vendors/', AdminVendorListView.as_view(), name='admin-vendors'),
+    path('vendors/onboard/', AdminVendorOnboardView.as_view(), name='admin-vendor-onboard'),
     path('vendors/<uuid:pk>/', AdminVendorDetailView.as_view(), name='admin-vendor-detail'),
     path('vendors/<uuid:pk>/sales-report/', AdminVendorSalesReportView.as_view(), name='admin-vendor-sales-report'),
 
