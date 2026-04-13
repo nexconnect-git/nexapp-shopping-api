@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
-from vendors.views import (
+from delivery.views import (
     DeliveryPayoutListView,
     DeliveryPayoutApproveView,
     DeliveryPayoutDeclineView,
@@ -29,6 +29,7 @@ urlpatterns = [
     path('history/', views.DeliveryHistoryView.as_view(), name='delivery-history'),
     path('earnings/', views.DeliveryEarningsView.as_view(), name='delivery-earnings'),
     # Payout self-service
+    # Payouts
     path('payouts/', DeliveryPayoutListView.as_view(), name='delivery-payout-list'),
     path('payouts/<uuid:pk>/approve/', DeliveryPayoutApproveView.as_view(), name='delivery-payout-approve'),
     path('payouts/<uuid:pk>/decline/', DeliveryPayoutDeclineView.as_view(), name='delivery-payout-decline'),

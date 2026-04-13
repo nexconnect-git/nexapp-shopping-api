@@ -19,6 +19,22 @@ from backend.utils import haversine
 logger = logging.getLogger(__name__)
 
 
+@job("default", timeout=90)
+def delayed_timeout_check(assignment_id: str) -> None:
+    """Sleep 60 s then call check_assignment_timeout — reliable fallback scheduler.
+
+    Enqueued immediately as a regular RQ job (no rq-scheduler dependency).
+    The 60-second sleep inside the worker ensures the timeout fires even when
+    the rq-scheduler service is not polling fast enough or enqueue_in is
+    unavailable.
+
+    Args:
+        assignment_id: UUID string primary key of the ``DeliveryAssignment``.
+    """
+    time.sleep(60)
+    check_assignment_timeout(assignment_id)
+
+
 @job("default")
 def search_and_notify_partners(assignment_id: str) -> None:
     """Find available delivery partners within the assignment's search radius and notify them.
@@ -122,16 +138,26 @@ def search_and_notify_partners(assignment_id: str) -> None:
             len(nearby_partners),
             assignment.current_radius_km,
         )
-        # Schedule a 1-minute timeout — if no one accepts, notify the vendor to retrigger
+        # Schedule a 1-minute timeout — if no one accepts, notify the vendor to retrigger.
+        # Strategy: try rq-scheduler first (most accurate), fall back to a plain
+        # delayed_timeout_check job that sleeps 60 s inside the worker process.
+        scheduled = False
         try:
-            queue = django_rq.get_queue("default")
-            queue.enqueue_in(timedelta(minutes=1), check_assignment_timeout, str(assignment_id))
+            scheduler = django_rq.get_scheduler("default")
+            scheduler.enqueue_in(
+                timedelta(minutes=1),
+                check_assignment_timeout,
+                str(assignment_id),
+            )
+            scheduled = True
+            logger.info("Assignment %s: timeout scheduled via rq-scheduler", assignment_id)
         except Exception:
             logger.warning(
-                "Assignment %s: could not schedule timeout check "
-                "(rq-scheduler may not be running)",
+                "Assignment %s: rq-scheduler unavailable, using delayed_timeout_check fallback",
                 assignment_id,
             )
+        if not scheduled:
+            delayed_timeout_check.delay(str(assignment_id))
     else:
         _expand_and_retry(assignment)
 

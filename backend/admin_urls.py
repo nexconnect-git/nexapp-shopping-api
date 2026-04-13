@@ -8,10 +8,16 @@ from backend.scheduled_tasks_views import (
     AdminScheduledTaskListCreateView,
     AdminScheduledTaskCancelView,
 )
-from accounts.views import (
-    AdminCustomerListView,
-    AdminCustomerDetailView,
-    AdminUserStatsView,
+from accounts.views import AdminUserViewSet, AdminStatsView
+from vendors.views import (
+    AdminVendorListView,
+    AdminVendorDetailView,
+    AdminVendorSalesReportView,
+    AdminVendorPayoutListView,
+    AdminVendorPayoutDetailView,
+    AdminVendorPayoutScheduleView,
+    AdminVendorPayoutSendPaymentView,
+    AdminVendorPayoutForcePaidView,
 )
 from delivery.views import (
     AdminDeliveryPartnerListView,
@@ -20,30 +26,6 @@ from delivery.views import (
     AdminDeliveryPartnerEarningsCalculationView,
     AdminAssetListCreateView,
     AdminAssetDetailView,
-)
-from vendors.views import (
-    AdminVendorListView,
-    AdminVendorDetailView,
-    AdminVendorStatusView,
-    AdminVendorSalesReportView,
-    # Onboarding
-    AdminVendorOnboardView,
-    AdminVendorOnboardingDetailView,
-    AdminVendorKYCReviewView,
-    AdminVendorBankDetailsView,
-    AdminVendorBankVerifyView,
-    AdminVendorDocumentListView,
-    AdminVendorDocumentVerifyView,
-    AdminVendorServiceableAreaView,
-    AdminVendorServiceableAreaDetailView,
-    AdminVendorHolidayView,
-    AdminVendorHolidayDetailView,
-    AdminVendorAuditLogView,
-    AdminVendorPayoutListView,
-    AdminVendorPayoutDetailView,
-    AdminVendorPayoutScheduleView,
-    AdminVendorPayoutSendPaymentView,
-    AdminVendorPayoutForcePaidView,
     AdminDeliveryPayoutListView,
     AdminDeliveryPayoutDetailView,
     AdminDeliveryPayoutScheduleView,
@@ -69,53 +51,48 @@ from notifications.views import (
     AdminSendNotificationView,
     AdminDeleteNotificationView,
 )
+from accounts.views.admin_customers import AdminCustomerViewSet
+
+from products.views.admin_views import AdminProductViewSet
 
 admin_router = DefaultRouter()
 admin_router.register(r'coupons', AdminCouponViewSet, basename='admin-coupon')
 
+admin_router.register(r'users', AdminUserViewSet, basename='admin-user')
+admin_router.register(r'customers', AdminCustomerViewSet, basename='admin-customer')
+
+admin_router.register(r'products', AdminProductViewSet, basename='admin-products')
+
 urlpatterns = [
     path('', include(admin_router.urls)),
-    # Platform stats
-    path('stats/', AdminUserStatsView.as_view(), name='admin-stats'),
-
-    # Customers
-    path('customers/', AdminCustomerListView.as_view(), name='admin-customers'),
-    path('customers/<uuid:pk>/', AdminCustomerDetailView.as_view(), name='admin-customer-detail'),
+    
+    # Dashboard summary statistics
+    path('stats/', AdminStatsView.as_view(), name='admin-stats'),
 
     # Vendors — CRUD
     path('vendors/', AdminVendorListView.as_view(), name='admin-vendors'),
-    path('vendors/onboard/', AdminVendorOnboardView.as_view(), name='admin-vendor-onboard'),
     path('vendors/<uuid:pk>/', AdminVendorDetailView.as_view(), name='admin-vendor-detail'),
-    path('vendors/<uuid:pk>/status/', AdminVendorStatusView.as_view(), name='admin-vendor-status'),
-    # Onboarding workflow
-    path('vendors/<uuid:pk>/onboarding/', AdminVendorOnboardingDetailView.as_view(), name='admin-vendor-onboarding'),
-    path('vendors/<uuid:pk>/kyc-review/', AdminVendorKYCReviewView.as_view(), name='admin-vendor-kyc-review'),
-    path('vendors/<uuid:pk>/bank/', AdminVendorBankDetailsView.as_view(), name='admin-vendor-bank'),
-    path('vendors/<uuid:pk>/bank/verify/', AdminVendorBankVerifyView.as_view(), name='admin-vendor-bank-verify'),
-    path('vendors/<uuid:pk>/documents/', AdminVendorDocumentListView.as_view(), name='admin-vendor-documents'),
-    path('vendors/<uuid:pk>/documents/<uuid:doc_pk>/verify/', AdminVendorDocumentVerifyView.as_view(), name='admin-vendor-document-verify'),
-    path('vendors/<uuid:pk>/serviceable-areas/', AdminVendorServiceableAreaView.as_view(), name='admin-vendor-serviceable-areas'),
-    path('vendors/<uuid:pk>/serviceable-areas/<uuid:area_pk>/', AdminVendorServiceableAreaDetailView.as_view(), name='admin-vendor-serviceable-area-detail'),
-    path('vendors/<uuid:pk>/holidays/', AdminVendorHolidayView.as_view(), name='admin-vendor-holidays'),
-    path('vendors/<uuid:pk>/holidays/<uuid:holiday_pk>/', AdminVendorHolidayDetailView.as_view(), name='admin-vendor-holiday-detail'),
-    path('vendors/<uuid:pk>/audit-logs/', AdminVendorAuditLogView.as_view(), name='admin-vendor-audit-logs'),
     path('vendors/<uuid:pk>/sales-report/', AdminVendorSalesReportView.as_view(), name='admin-vendor-sales-report'),
+
+    # Vendor payouts
     path('payouts/vendors/', AdminVendorPayoutListView.as_view(), name='admin-vendor-payouts'),
     path('payouts/vendors/<uuid:pk>/', AdminVendorPayoutDetailView.as_view(), name='admin-vendor-payout-detail'),
     path('payouts/vendors/<uuid:pk>/schedule/', AdminVendorPayoutScheduleView.as_view(), name='admin-vendor-payout-schedule'),
     path('payouts/vendors/<uuid:pk>/send-payment/', AdminVendorPayoutSendPaymentView.as_view(), name='admin-vendor-payout-send-payment'),
     path('payouts/vendors/<uuid:pk>/force-paid/', AdminVendorPayoutForcePaidView.as_view(), name='admin-vendor-payout-force-paid'),
-    path('payouts/delivery/', AdminDeliveryPayoutListView.as_view(), name='admin-delivery-payouts'),
-    path('payouts/delivery/<uuid:pk>/', AdminDeliveryPayoutDetailView.as_view(), name='admin-delivery-payout-detail'),
-    path('payouts/delivery/<uuid:pk>/schedule/', AdminDeliveryPayoutScheduleView.as_view(), name='admin-delivery-payout-schedule'),
-    path('payouts/delivery/<uuid:pk>/send-payment/', AdminDeliveryPayoutSendPaymentView.as_view(), name='admin-delivery-payout-send-payment'),
-    path('payouts/delivery/<uuid:pk>/force-paid/', AdminDeliveryPayoutForcePaidView.as_view(), name='admin-delivery-payout-force-paid'),
 
     # Delivery partners
     path('delivery-partners/', AdminDeliveryPartnerListView.as_view(), name='admin-delivery-partners'),
     path('delivery-partners/<uuid:pk>/', AdminDeliveryPartnerDetailView.as_view(), name='admin-delivery-partner-detail'),
     path('delivery-partners/<uuid:pk>/calculate-earnings/', AdminDeliveryPartnerEarningsCalculationView.as_view(), name='admin-delivery-partner-earnings'),
     path('delivery-partners/<uuid:pk>/approve/', AdminDeliveryPartnerApprovalView.as_view(), name='admin-delivery-partner-approve'),
+
+    # Delivery payouts
+    path('payouts/delivery/', AdminDeliveryPayoutListView.as_view(), name='admin-delivery-payouts'),
+    path('payouts/delivery/<uuid:pk>/', AdminDeliveryPayoutDetailView.as_view(), name='admin-delivery-payout-detail'),
+    path('payouts/delivery/<uuid:pk>/schedule/', AdminDeliveryPayoutScheduleView.as_view(), name='admin-delivery-payout-schedule'),
+    path('payouts/delivery/<uuid:pk>/send-payment/', AdminDeliveryPayoutSendPaymentView.as_view(), name='admin-delivery-payout-send-payment'),
+    path('payouts/delivery/<uuid:pk>/force-paid/', AdminDeliveryPayoutForcePaidView.as_view(), name='admin-delivery-payout-force-paid'),
 
     # Categories
     path('categories/', AdminCategoryListCreateView.as_view(), name='admin-categories'),

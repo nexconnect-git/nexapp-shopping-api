@@ -33,6 +33,7 @@ django_asgi_app = get_asgi_application()
 from backend.middleware import JWTAuthMiddleware
 from orders.consumers import IssueChatConsumer
 from delivery.consumers import DeliveryTrackingConsumer
+from backend.consumers import AdminStatsConsumer
 
 application = ProtocolTypeRouter({
     "http": django_asgi_app,
@@ -40,6 +41,7 @@ application = ProtocolTypeRouter({
         URLRouter([
             path("ws/issues/<uuid:issue_id>/", IssueChatConsumer.as_asgi()),
             path("ws/delivery/<uuid:order_id>/tracking/", DeliveryTrackingConsumer.as_asgi()),
+            path("ws/admin/stats/", AdminStatsConsumer.as_asgi()),
         ])
     ),
 })
