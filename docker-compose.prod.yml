@@ -1,0 +1,87 @@
+version: "3.8"
+
+services:
+
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: docker/Dockerfile.prod
+    # The frontend container builds and runs Nginx to serve the angular static files.
+    # Wait, in the Dockerfile.prod it already runs nginx! Let's optimize:
+    # We can just mount the built files to a volume, or let the frontend container itself be the main nginx,
+    # and just map port 80 to it.
+    # To keep the architecture clean, we'll let the frontend container run the nginx with our default.conf
+    # Let's adjust: Since frontend container already has nginx, we can just use the frontend container as the reverse proxy.
+    
+    # Actually, let's redefine the `frontend` container above since it IS the Nginx container now that serves frontend + proxies backend.
+    image: frontend-prod
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+      - back_media:/app/media
+      - back_static:/app/staticfiles
+    depends_on:
+      - backend
+    restart: always
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: sh -c "python manage.py collectstatic --noinput && python manage.py migrate && daphne -b 0.0.0.0 -p 8000 backend.asgi:application"
+    volumes:
+      - back_media:/app/media
+      - back_static:/app/staticfiles
+    depends_on:
+      - db
+      - redis
+    env_file:
+      - .env
+    restart: always
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: python manage.py rqworker default
+    depends_on:
+      - db
+      - redis
+    env_file:
+      - .env
+    restart: always
+
+  scheduler:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: python manage.py rqscheduler
+    depends_on:
+      - db
+      - redis
+    env_file:
+      - .env
+    restart: always
+
+  db:
+    image: postgres:15
+    restart: always
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${DB_NAME:-nc_shopping_app}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-admin}
+    volumes:
+      - pgdata_prod:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+
+volumes:
+  pgdata_prod:
+  back_media:
+  back_static:
