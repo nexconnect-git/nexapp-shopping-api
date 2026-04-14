@@ -81,9 +81,12 @@ class VendorStartDeliverySearchView(APIView):
     permission_classes = [IsAuthenticated, IsApprovedVendor]
 
     def post(self, request, pk):
-        order = VendorOrderRepository().get_order_for_vendor(pk=pk, vendor=request.user.vendor_profile, status="ready")
+        order = VendorOrderRepository().get_order_for_vendor(pk=pk, vendor=request.user.vendor_profile)
         if not order:
-            return Response({"error": "Order not found or not ready."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"error": "Order not found."}, status=status.HTTP_404_NOT_FOUND)
+            
+        if order.status != "ready":
+            return Response({"error": f"Cannot start search. Order status is '{order.status}'."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             updated_order = StartDeliverySearchAction().execute(order)
@@ -97,9 +100,12 @@ class VendorCancelDeliverySearchView(APIView):
     permission_classes = [IsAuthenticated, IsApprovedVendor]
 
     def post(self, request, pk):
-        order = VendorOrderRepository().get_order_for_vendor(pk=pk, vendor=request.user.vendor_profile, status="ready")
+        order = VendorOrderRepository().get_order_for_vendor(pk=pk, vendor=request.user.vendor_profile)
         if not order:
-            return Response({"error": "Order not found or not ready."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"error": "Order not found."}, status=status.HTTP_404_NOT_FOUND)
+        
+        if order.status != "ready":
+            return Response({"error": f"Cannot cancel search. Order status is '{order.status}'."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             updated_order = CancelDeliverySearchAction().execute(order)
