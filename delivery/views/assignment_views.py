@@ -56,8 +56,10 @@ class ConfirmDeliveryView(APIView):
     def post(self, request, pk):
         submitted_otp = str(request.data.get("otp", "")).strip()
         photo = request.FILES.get("photo") or request.FILES.get("delivery_photo")
+        transaction_photo = request.FILES.get("transaction_photo")
+
         try:
-            order = ConfirmDeliveryAction.execute(str(pk), request.user, submitted_otp, photo)
+            order = ConfirmDeliveryAction.execute(str(pk), request.user, submitted_otp, photo, transaction_photo=transaction_photo)
             return Response(OrderSerializer(order).data)
         except ValueError as exc:
             if "not found" in str(exc).lower():

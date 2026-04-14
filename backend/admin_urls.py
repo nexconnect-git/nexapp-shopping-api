@@ -47,6 +47,7 @@ from orders.views import (
     AdminOrderIssueListView,
     AdminOrderIssueDetailView,
     IssueMessageCreateView,
+    AdminPlatformSettingView,
 )
 from notifications.views import (
     AdminNotificationListView,
@@ -107,6 +108,7 @@ urlpatterns = [
     path('products/<uuid:pk>/', AdminProductDetailView.as_view(), name='admin-product-detail'),
 
     # Orders
+    path('settings/platform/', AdminPlatformSettingView.as_view(), name='admin-platform-settings'),
     path('orders/', AdminOrderListView.as_view(), name='admin-orders'),
     path('orders/<uuid:pk>/', AdminOrderDetailView.as_view(), name='admin-order-detail'),
 

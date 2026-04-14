@@ -102,3 +102,19 @@ class AdminOrderIssueDetailView(APIView):
 
         issue.save()
         return Response(OrderIssueSerializer(issue).data)
+
+class AdminPlatformSettingView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    def get(self, request):
+        from orders.models.setting import PlatformSetting
+        setting = PlatformSetting.get_setting()
+        return Response({"upi_id": setting.upi_id})
+
+    def patch(self, request):
+        from orders.models.setting import PlatformSetting
+        setting = PlatformSetting.get_setting()
+        if "upi_id" in request.data:
+            setting.upi_id = request.data["upi_id"]
+            setting.save()
+        return Response({"upi_id": setting.upi_id})

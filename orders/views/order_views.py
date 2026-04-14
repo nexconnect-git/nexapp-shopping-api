@@ -89,7 +89,10 @@ class OrderPaymentQRView(APIView):
             return Response({"error": "Access denied."}, status=status.HTTP_403_FORBIDDEN)
 
         amount = str(order.total)
-        upi_string = f"upi://pay?pa=nexconnect@ybl&pn=NexConnect&am={amount}&cu=INR&tn=Order%20{order.order_number}"
+        
+        from orders.models.setting import PlatformSetting
+        setting = PlatformSetting.get_setting()
+        upi_string = f"upi://pay?pa={setting.upi_id}&pn=NexConnect&am={amount}&cu=INR&tn=Order%20{order.order_number}"
 
         qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M)
         qr.add_data(upi_string)

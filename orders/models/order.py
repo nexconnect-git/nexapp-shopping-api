@@ -47,6 +47,7 @@ class Order(models.Model):
     pickup_otp = models.CharField(max_length=6, blank=True, default='')
     delivery_otp = models.CharField(max_length=6, blank=True, default='')
     delivery_photo = models.ImageField(upload_to='delivery_photos/', null=True, blank=True)
+    transaction_photo = models.ImageField(upload_to='transaction_photos/', null=True, blank=True)
     estimated_delivery_time = models.IntegerField(help_text='Estimated minutes', null=True, blank=True)
     actual_delivery_time = models.DateTimeField(null=True, blank=True)
     delivery_latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)

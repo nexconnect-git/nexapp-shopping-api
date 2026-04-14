@@ -131,8 +131,8 @@ class CancelOrderAction(BaseAction):
         except Order.DoesNotExist:
             raise ValueError("Order not found.")
 
-        if order.status != "placed":
-            raise ValueError("Order can only be cancelled before it is accepted by the vendor.")
+        if order.status in ["picked_up", "on_the_way", "delivered"]:
+            raise ValueError("Order can't be cancelled because it is dispatched.")
 
         order.status = "cancelled"
         order.save(update_fields=["status", "updated_at"])
@@ -152,6 +152,9 @@ class AdminUpdateOrderStatusAction(BaseAction):
         valid_statuses = ["placed", "confirmed", "preparing", "ready", "picked_up", "on_the_way", "delivered", "cancelled"]
         if new_status not in valid_statuses:
             raise ValueError("Invalid status.")
+
+        if new_status == "cancelled" and order.status in ["picked_up", "on_the_way", "delivered"]:
+            raise ValueError("Order can't be cancelled because it is dispatched.")
 
         old_status = order.status
         order.status = new_status

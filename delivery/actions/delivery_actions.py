@@ -82,7 +82,7 @@ class UpdateDeliveryStatusAction:
 class ConfirmDeliveryAction:
     @staticmethod
     @transaction.atomic
-    def execute(order_id: str, user: Any, submitted_otp: str, photo: Any) -> Order:
+    def execute(order_id: str, user: Any, submitted_otp: str, photo: Any, transaction_photo: Any = None) -> Order:
         try:
             order = OrderRepository.get_by_id(order_id)
             if order.delivery_partner != user or order.status != "on_the_way":
@@ -103,7 +103,13 @@ class ConfirmDeliveryAction:
         order.status = "delivered"
         order.actual_delivery_time = timezone.now()
         order.delivery_photo = photo
-        order.save(update_fields=["status", "actual_delivery_time", "delivery_photo", "updated_at"])
+        
+        update_fields = ["status", "actual_delivery_time", "delivery_photo", "updated_at"]
+        if transaction_photo:
+            order.transaction_photo = transaction_photo
+            update_fields.append("transaction_photo")
+
+        order.save(update_fields=update_fields)
 
         partner = user.delivery_profile
         base_qs = OrderRepository.get_base_queryset()

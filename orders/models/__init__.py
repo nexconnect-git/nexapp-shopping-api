@@ -4,6 +4,7 @@ from .coupon import Coupon, CouponUsage
 from .order_rating import OrderRating
 from .order_tracking import OrderTracking
 from .order_issue import OrderIssue, IssueMessage
+from .setting import PlatformSetting
 
 __all__ = [
     'Cart',
@@ -16,4 +17,5 @@ __all__ = [
     'OrderTracking',
     'OrderIssue',
     'IssueMessage',
+    'PlatformSetting',
 ]
