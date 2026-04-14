@@ -37,6 +37,14 @@ class AcceptAssignmentAction:
         assignment.accepted_partner = partner
         DeliveryAssignmentRepository.save(assignment, update_fields=["status", "accepted_partner", "updated_at"])
 
+        # Delete any pending notifications so other partners' apps drop the request from their unread list
+        from notifications.models import Notification
+        Notification.objects.filter(
+            notification_type="delivery",
+            data__assignment_id=str(assignment_id),
+            data__type="assignment_request",
+        ).delete()
+
         partner.status = "on_delivery"
         partner.save(update_fields=["status", "updated_at"])
 

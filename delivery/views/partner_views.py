@@ -54,27 +54,44 @@ class AvailableOrdersView(APIView):
     permission_classes = [IsAuthenticated, IsDeliveryPartner]
 
     def get(self, request):
+        # Legacy fallback view: Maps exactly to PendingAssignmentRequestsView logic
+        # strictly respecting assignment timeouts and notifications
         partner = request.user.delivery_profile
-        base_qs = OrderRepository.get_base_queryset()
-        orders = base_qs.filter(status="ready", delivery_partner__isnull=True).select_related("vendor")
-
-        if partner.current_latitude and partner.current_longitude:
-            nearby_orders = []
-            for order in orders:
+        
+        # Enforce exactly the 1-minute timeout queue logic
+        from delivery.data.assignment_repo import DeliveryAssignmentRepository
+        from delivery.tasks import check_assignment_timeout, check_stale_assignments
+        
+        expired_assignments = DeliveryAssignmentRepository.get_expired_for_partner(partner, minutes_old=1)
+        for assignment in expired_assignments:
+            check_assignment_timeout(str(assignment.id))
+            
+        check_stale_assignments()
+        
+        pending_qs = DeliveryAssignmentRepository.get_pending_for_partner(
+            partner=partner,
+            exclude_rejected=True,
+            select_related=["order__vendor"],
+            prefetch=["order__items"]
+        )
+        
+        # Extract orders and simulate distance_km for legacy compatibility
+        nearby_orders = []
+        for assignment in pending_qs:
+            order = assignment.order
+            order_data = OrderSerializer(order).data
+            if partner.current_latitude and partner.current_longitude and order.vendor.latitude and order.vendor.longitude:
                 dist = haversine(
                     float(partner.current_latitude),
                     float(partner.current_longitude),
                     float(order.vendor.latitude),
                     float(order.vendor.longitude),
                 )
-                if dist <= float(order.vendor.delivery_radius_km) * 2:
-                    order_data = OrderSerializer(order).data
-                    order_data["distance_km"] = round(dist, 2)
-                    nearby_orders.append(order_data)
-            nearby_orders.sort(key=lambda o: o["distance_km"])
-            return Response(nearby_orders)
-
-        return Response(OrderSerializer(orders, many=True).data)
+                order_data["distance_km"] = round(dist, 2)
+            nearby_orders.append(order_data)
+            
+        nearby_orders.sort(key=lambda o: o.get("distance_km", 999))
+        return Response(nearby_orders)
 
 
 class UpdateLocationView(APIView):
