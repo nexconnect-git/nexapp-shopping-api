@@ -1,11 +1,12 @@
-FROM python:3.11
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# Create venv
-RUN python -m venv /opt/venv
+# Install curl for healthchecks
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
-# Activate venv (set PATH)
+# Create and activate venv
+RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 COPY requirements.txt .
@@ -13,4 +14,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+EXPOSE 8000
+
+CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "backend.asgi:application"]
