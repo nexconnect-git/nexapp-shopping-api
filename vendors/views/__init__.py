@@ -5,8 +5,8 @@ from .vendor import (
     VendorProfileView, VendorDashboardView, SetStoreStatusView, BulkUpdateStockView, VendorProductViewSet
 )
 from .orders import (
-    VendorOrdersView, VendorOrderDetailView, VendorUpdateOrderStatusView, 
-    VendorVerifyPickupOtpView, VendorRetriggerPickupView
+    VendorOrdersView, VendorOrderDetailView, VendorUpdateOrderStatusView,
+    VendorVerifyPickupOtpView, VendorStartDeliverySearchView, VendorCancelDeliverySearchView,
 )
 from .admin import (
     AdminVendorListView,
@@ -40,7 +40,8 @@ __all__ = [
     'VendorOrderDetailView',
     'VendorUpdateOrderStatusView',
     'VendorVerifyPickupOtpView',
-    'VendorRetriggerPickupView',
+    'VendorStartDeliverySearchView',
+    'VendorCancelDeliverySearchView',
     'SetStoreStatusView',
     'BulkUpdateStockView',
     'VendorDetailView',

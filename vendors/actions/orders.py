@@ -2,7 +2,6 @@ import random
 from django.utils import timezone
 from .base import BaseAction
 from orders.models import OrderTracking
-from delivery.models import DeliveryAssignment
 from notifications.models import Notification
 
 class UpdateOrderStatusAction(BaseAction):
@@ -52,16 +51,6 @@ class UpdateOrderStatusAction(BaseAction):
             data={"order_id": str(order.id), "order_number": order.order_number},
         )
 
-        if new_status == "ready":
-            assignment, _ = DeliveryAssignment.objects.get_or_create(order=order)
-            assignment.status = "searching"
-            assignment.save(update_fields=["status", "updated_at"])
-            try:
-                from delivery.tasks import search_and_notify_partners
-                search_and_notify_partners.delay(str(assignment.id))
-            except ImportError:
-                pass
-
         return order
 
 
@@ -99,15 +88,27 @@ class VerifyPickupOtpAction(BaseAction):
         return order
 
 
-class RetriggerPickupAction(BaseAction):
+class StartDeliverySearchAction(BaseAction):
+    """Vendor-initiated delivery partner search.
+
+    Works for both the first search after marking an order ready and
+    re-initiating after a timeout/cancel. Raises ValueError when a search
+    is already active or a partner is already assigned.
+    """
+
     def execute(self, order):
+        from delivery.models import DeliveryAssignment
+
         if order.delivery_partner:
             raise ValueError("A delivery partner is already assigned.")
 
-        assignment, _ = DeliveryAssignment.objects.get_or_create(order=order)
+        assignment, created = DeliveryAssignment.objects.get_or_create(order=order)
 
-        if assignment.status == "accepted":
-            raise ValueError("Assignment already accepted.")
+        if not created and assignment.status in ("searching", "notified"):
+            raise ValueError("A delivery partner search is already in progress.")
+
+        if not created and assignment.status == "accepted":
+            raise ValueError("A delivery partner is already assigned.")
 
         assignment.status = "searching"
         assignment.current_radius_km = 2.0
@@ -122,15 +123,43 @@ class RetriggerPickupAction(BaseAction):
         except ImportError:
             pass
 
-        Notification.objects.create(
-            user=order.vendor.user,
-            title="Searching for Delivery Partner",
-            message=f"Looking for a delivery partner for Order #{order.order_number}...",
-            notification_type="delivery",
-            data={
-                "order_id": str(order.id),
-                "order_number": order.order_number,
-                "type": "assignment_searching",
-            },
-        )
         return order
+
+
+class CancelDeliverySearchAction(BaseAction):
+    """Vendor cancels an in-progress delivery partner search.
+
+    Clears pending partner notifications and marks the assignment cancelled
+    so the 1-minute timeout job is a no-op when it eventually fires.
+    """
+
+    def execute(self, order):
+        from delivery.models import DeliveryAssignment
+
+        if order.delivery_partner:
+            raise ValueError("A delivery partner is already assigned — cannot cancel search.")
+
+        try:
+            assignment = DeliveryAssignment.objects.get(order=order)
+        except DeliveryAssignment.DoesNotExist:
+            raise ValueError("No active search found for this order.")
+
+        if assignment.status not in ("searching", "notified"):
+            raise ValueError("No active search to cancel.")
+
+        # Remove pending notifications so partners no longer see the request.
+        Notification.objects.filter(
+            notification_type="delivery",
+            data__assignment_id=str(assignment.id),
+            data__type="assignment_request",
+        ).delete()
+
+        assignment.status = "cancelled"
+        assignment.save(update_fields=["status", "updated_at"])
+        assignment.notified_partners.clear()
+
+        return order
+
+
+# Backwards-compatible alias used by older URL/view references.
+RetriggerPickupAction = StartDeliverySearchAction

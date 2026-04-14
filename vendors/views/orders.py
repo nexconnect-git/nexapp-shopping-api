@@ -5,7 +5,12 @@ from rest_framework.permissions import IsAuthenticated
 
 from accounts.permissions import IsApprovedVendor
 from vendors.data import VendorOrderRepository
-from vendors.actions import UpdateOrderStatusAction, VerifyPickupOtpAction, RetriggerPickupAction
+from vendors.actions import (
+    UpdateOrderStatusAction,
+    VerifyPickupOtpAction,
+    StartDeliverySearchAction,
+    CancelDeliverySearchAction,
+)
 from orders.serializers import OrderSerializer
 from .public import StandardPagination
 
@@ -43,7 +48,7 @@ class VendorUpdateOrderStatusView(APIView):
         order = VendorOrderRepository().get_order_for_vendor(pk=pk, vendor=request.user.vendor_profile)
         if not order:
             return Response({"error": "Order not found."}, status=status.HTTP_404_NOT_FOUND)
-        
+
         action = UpdateOrderStatusAction()
         try:
             updated_order = action.execute(order, request.data.get("status"), request.data.get("cancel_reason"))
@@ -66,7 +71,8 @@ class VendorVerifyPickupOtpView(APIView):
         except ValueError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-class VendorRetriggerPickupView(APIView):
+class VendorStartDeliverySearchView(APIView):
+    """Vendor initiates (or re-initiates) delivery partner search."""
     permission_classes = [IsAuthenticated, IsApprovedVendor]
 
     def post(self, request, pk):
@@ -74,9 +80,23 @@ class VendorRetriggerPickupView(APIView):
         if not order:
             return Response({"error": "Order not found or not ready."}, status=status.HTTP_404_NOT_FOUND)
 
-        action = RetriggerPickupAction()
         try:
-            updated_order = action.execute(order)
+            updated_order = StartDeliverySearchAction().execute(order)
+            return Response(OrderSerializer(updated_order).data)
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+class VendorCancelDeliverySearchView(APIView):
+    """Vendor cancels an in-progress delivery partner search."""
+    permission_classes = [IsAuthenticated, IsApprovedVendor]
+
+    def post(self, request, pk):
+        order = VendorOrderRepository().get_order_for_vendor(pk=pk, vendor=request.user.vendor_profile, status="ready")
+        if not order:
+            return Response({"error": "Order not found or not ready."}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            updated_order = CancelDeliverySearchAction().execute(order)
             return Response(OrderSerializer(updated_order).data)
         except ValueError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
