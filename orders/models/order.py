@@ -37,8 +37,12 @@ class Order(models.Model):
     total = models.DecimalField(max_digits=10, decimal_places=2)
     PAYMENT_METHOD_CHOICES = (
         ('cod', 'Cash on Delivery'),
+        ('razorpay', 'Razorpay (Online)'),
     )
     payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES, default='cod')
+    razorpay_order_id = models.CharField(max_length=100, blank=True, default='')
+    razorpay_payment_id = models.CharField(max_length=100, blank=True, default='')
+    is_payment_verified = models.BooleanField(default=False)
     coupon = models.ForeignKey(
         'orders.Coupon', on_delete=models.SET_NULL, null=True, blank=True, related_name='orders'
     )

@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from . import views
+from orders import views
 
 router = DefaultRouter()
 router.register(r'admin-coupons', views.AdminCouponViewSet, basename='admin-coupon')
@@ -15,10 +15,13 @@ urlpatterns = [
     path('cart/clear/', views.ClearCartView.as_view(), name='cart-clear'),
     path('create/', views.CreateOrderView.as_view(), name='order-create'),
     path('list/', views.OrderListView.as_view(), name='order-list'),
+    path('razorpay-webhook/', views.RazorpayWebhookView.as_view(), name='razorpay-webhook'),
     path('<uuid:pk>/', views.OrderDetailView.as_view(), name='order-detail'),
     path('<uuid:pk>/cancel/', views.CancelOrderView.as_view(), name='order-cancel'),
     path('<uuid:pk>/tracking/', views.OrderTrackingView.as_view(), name='order-tracking'),
     path('<uuid:pk>/payment-qr/', views.OrderPaymentQRView.as_view(), name='order-payment-qr'),
+    path('<uuid:pk>/create-payment/', views.CreateRazorpayOrderView.as_view(), name='order-create-payment'),
+    path('<uuid:pk>/verify-payment/', views.VerifyRazorpayPaymentView.as_view(), name='order-verify-payment'),
     path('<uuid:pk>/rate/', views.SubmitOrderRatingView.as_view(), name='order-rate'),
     # Order Issues
     path('issues/', views.CustomerOrderIssueListCreateView.as_view(), name='issue-list'),

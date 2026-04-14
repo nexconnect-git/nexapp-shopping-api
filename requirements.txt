@@ -22,3 +22,25 @@ rq-scheduler==0.13.1
 channels==4.1.0
 daphne==4.1.2
 channels_redis==4.2.1
+
+# Error monitoring
+sentry-sdk[django]==2.20.0
+
+# Rate limiting
+django-ratelimit==4.1.0
+
+# API documentation
+drf-spectacular==0.28.0
+
+# Object storage (S3 / Cloudflare R2)
+django-storages[s3]==1.14.4
+boto3==1.35.0
+
+# Payments
+razorpay==1.4.2
+
+# HTTP client (used by FCM fallback and Razorpay webhooks)
+requests==2.32.3
+
+# razorpay SDK uses pkg_resources; pin setuptools to a version that still ships it
+setuptools<70

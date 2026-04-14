@@ -1,23 +1,23 @@
-import logging
-from django.conf import settings
-from .models import DeviceToken
+"""Thin public helper for sending FCM push notifications.
 
-logger = logging.getLogger(__name__)
+Delegates to ``FCMService`` which uses the firebase-admin SDK.
+"""
 
-def send_push(user_id, title, body, data=None):
+from notifications.services.fcm_service import FCMService
+
+_service = FCMService()
+
+
+def send_push(user_id, title: str, body: str, data: dict | None = None) -> bool:
+    """Send a push notification to all registered devices for a user.
+
+    Args:
+        user_id: The user's UUID/PK whose device tokens to target.
+        title: Notification title string.
+        body: Notification body text.
+        data: Optional extra payload dict (values will be coerced to strings).
+
+    Returns:
+        True if at least one message was sent, False if skipped or all failed.
     """
-    Stub for Firebase Cloud Messaging (FCM). 
-    In a real app, this would use google-auth and POST to the FCM v1 API.
-    """
-    server_key = settings.FCM_SERVER_KEY
-    if not server_key:
-        logger.warning("FCM_SERVER_KEY not set. Skipping push notification.")
-        return
-
-    tokens = DeviceToken.objects.filter(user_id=user_id).values_list('token', flat=True)
-    if not tokens:
-        return
-
-    # Mock implementation of FCM push
-    logger.info(f"Mock FCM Push to {len(tokens)} devices for user {user_id}: {title} - {body}")
-    # import requests ...
+    return _service.send_push(user_id, title=title, body=body, data=data)
