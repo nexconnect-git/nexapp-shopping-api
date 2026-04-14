@@ -184,6 +184,16 @@ def _expand_and_retry(assignment) -> None:
     # Small delay to prevent tight infinite looping in background workers
     time.sleep(2)
 
+    # Re-fetch so we don't overwrite a cancel/accept that arrived during the sleep.
+    assignment.refresh_from_db()
+    if assignment.status in ("accepted", "cancelled", "timed_out", "failed"):
+        logger.info(
+            "Assignment %s: aborting expand/retry — status is now '%s'",
+            assignment.id,
+            assignment.status,
+        )
+        return
+
     assignment.status = "searching"
     assignment.last_search_at = timezone.now()
     assignment.save(update_fields=["status", "current_radius_km", "last_search_at", "updated_at"])
