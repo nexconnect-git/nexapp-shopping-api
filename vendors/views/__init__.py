@@ -11,7 +11,8 @@ from .orders import (
 from .admin import (
     AdminVendorListView,
     AdminVendorDetailView,
-    AdminVendorSalesReportView
+    AdminVendorSalesReportView,
+    AdminVendorOnboardView,
 )
 from .payouts_and_misc import (
     VendorPayoutListView, VendorPayoutApproveView, VendorPayoutDeclineView,
@@ -48,6 +49,7 @@ __all__ = [
     'AdminVendorListView',
     'AdminVendorDetailView',
     'AdminVendorSalesReportView',
+    'AdminVendorOnboardView',
     'AdminVendorPayoutListView',
     'AdminVendorPayoutDetailView',
     'AdminVendorPayoutScheduleView',
