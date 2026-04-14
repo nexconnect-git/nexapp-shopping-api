@@ -68,6 +68,27 @@ class AdminVendorDetailView(APIView):
         return Response(serializer.data)
 
 
+class AdminVendorStatusView(APIView):
+    """POST /api/admin/vendors/<pk>/status/ — approve, reject, or suspend a vendor."""
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    ALLOWED_STATUSES = {'approved', 'rejected', 'suspended', 'pending'}
+
+    def post(self, request, pk):
+        new_status = request.data.get('status')
+        if new_status not in self.ALLOWED_STATUSES:
+            return Response(
+                {"error": f"Invalid status. Must be one of: {', '.join(self.ALLOWED_STATUSES)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        vendor = VendorRepository().get_by_id(pk)
+        if not vendor:
+            return Response({"error": "Vendor not found."}, status=status.HTTP_404_NOT_FOUND)
+        vendor.status = new_status
+        vendor.save(update_fields=['status'])
+        return Response(AdminVendorSerializer(vendor).data)
+
+
 class AdminVendorSalesReportView(APIView):
     """GET /api/admin/vendors/<pk>/sales-report/ — analytics for a single vendor."""
     permission_classes = [IsAuthenticated, IsAdminRole]

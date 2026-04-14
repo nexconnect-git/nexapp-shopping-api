@@ -14,6 +14,7 @@ from vendors.views import (
     AdminVendorDetailView,
     AdminVendorSalesReportView,
     AdminVendorOnboardView,
+    AdminVendorStatusView,
     AdminVendorPayoutListView,
     AdminVendorPayoutDetailView,
     AdminVendorPayoutScheduleView,
@@ -73,6 +74,7 @@ urlpatterns = [
     # Vendors — CRUD
     path('vendors/', AdminVendorListView.as_view(), name='admin-vendors'),
     path('vendors/onboard/', AdminVendorOnboardView.as_view(), name='admin-vendor-onboard'),
+    path('vendors/<uuid:pk>/status/', AdminVendorStatusView.as_view(), name='admin-vendor-status'),
     path('vendors/<uuid:pk>/', AdminVendorDetailView.as_view(), name='admin-vendor-detail'),
     path('vendors/<uuid:pk>/sales-report/', AdminVendorSalesReportView.as_view(), name='admin-vendor-sales-report'),
 
