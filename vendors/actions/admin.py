@@ -1,6 +1,6 @@
 from django.db import transaction
 from django.utils import timezone
-from .base import BaseAction
+from vendors.actions.base import BaseAction
 
 from vendors.models import Vendor, VendorDocument, VendorOnboarding, VendorAuditLog
 from backend.events import vendor_approved

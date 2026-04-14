@@ -1,8 +1,11 @@
 import random
 from django.utils import timezone
-from .base import BaseAction
+from vendors.actions.base import BaseAction
 from orders.models import OrderTracking
 from notifications.models import Notification
+from delivery.models import DeliveryAssignment
+from delivery.tasks import search_and_notify_partners
+
 
 class UpdateOrderStatusAction(BaseAction):
     def execute(self, order, new_status: str, cancel_reason: str = None):
@@ -97,8 +100,6 @@ class StartDeliverySearchAction(BaseAction):
     """
 
     def execute(self, order):
-        from delivery.models import DeliveryAssignment
-
         if order.delivery_partner:
             raise ValueError("A delivery partner is already assigned.")
 
@@ -117,11 +118,7 @@ class StartDeliverySearchAction(BaseAction):
         assignment.notified_partners.clear()
         assignment.rejected_partners.clear()
 
-        try:
-            from delivery.tasks import search_and_notify_partners
-            search_and_notify_partners.delay(str(assignment.id))
-        except ImportError:
-            pass
+        search_and_notify_partners.delay(str(assignment.id))
 
         return order
 
@@ -134,8 +131,6 @@ class CancelDeliverySearchAction(BaseAction):
     """
 
     def execute(self, order):
-        from delivery.models import DeliveryAssignment
-
         if order.delivery_partner:
             raise ValueError("A delivery partner is already assigned — cannot cancel search.")
 
@@ -147,7 +142,6 @@ class CancelDeliverySearchAction(BaseAction):
         if assignment.status not in ("searching", "notified"):
             raise ValueError("No active search to cancel.")
 
-        # Remove pending notifications so partners no longer see the request.
         Notification.objects.filter(
             notification_type="delivery",
             data__assignment_id=str(assignment.id),
@@ -161,5 +155,5 @@ class CancelDeliverySearchAction(BaseAction):
         return order
 
 
-# Backwards-compatible alias used by older URL/view references.
+# Backwards-compatible alias.
 RetriggerPickupAction = StartDeliverySearchAction

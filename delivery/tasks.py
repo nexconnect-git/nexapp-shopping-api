@@ -1,9 +1,7 @@
 """
 Background tasks for the ``delivery`` app.
 
-These tasks are processed by RQ workers. Model imports inside ``@job``
-functions are kept inline intentionally to prevent circular import errors at
-RQ worker startup; they must not be moved to the module level.
+These tasks are processed by RQ workers.
 """
 
 import logging
@@ -15,6 +13,8 @@ from django_rq import job
 from django.utils import timezone
 
 from backend.utils import haversine
+from delivery.models import DeliveryAssignment, DeliveryPartner
+from notifications.models import Notification
 
 logger = logging.getLogger(__name__)
 
@@ -54,10 +54,6 @@ def search_and_notify_partners(assignment_id: str) -> None:
     Args:
         assignment_id: UUID string primary key of the ``DeliveryAssignment``.
     """
-    # Inline imports required to avoid RQ worker startup circular import errors.
-    from delivery.models import DeliveryAssignment, DeliveryPartner
-    from notifications.models import Notification
-
     try:
         assignment = (
             DeliveryAssignment.objects
@@ -214,10 +210,6 @@ def check_assignment_timeout(assignment_id: str) -> None:
     Args:
         assignment_id: UUID string primary key of the ``DeliveryAssignment``.
     """
-    # Inline imports required to avoid RQ worker startup circular import errors.
-    from delivery.models import DeliveryAssignment
-    from notifications.models import Notification
-
     try:
         assignment = DeliveryAssignment.objects.select_related(
             "order__vendor__user"
@@ -274,13 +266,7 @@ def check_stale_assignments() -> None:
       - ``searching`` assignments idle for > 2 minutes: re-fire search in case
         new partners have come online since the last attempt.
 
-    Note:
-        ``DeliveryAssignment`` is imported inline to prevent circular import
-        errors in RQ workers.
     """
-    # Inline import to prevent circular import errors in RQ workers.
-    from delivery.models import DeliveryAssignment
-
     timeout_threshold = timezone.now() - timedelta(minutes=1)
     stale_threshold = timezone.now() - timedelta(minutes=2)
 

@@ -1,26 +1,25 @@
-from .public import (
+from vendors.views.public import (
     VendorRegistrationView, VendorListView, VendorDetailView, NearbyVendorsView
 )
-from .vendor import (
+from vendors.views.vendor import (
     VendorProfileView, VendorDashboardView, SetStoreStatusView, BulkUpdateStockView, VendorProductViewSet
 )
-from .orders import (
+from vendors.views.orders import (
     VendorOrdersView, VendorOrderDetailView, VendorUpdateOrderStatusView,
     VendorVerifyPickupOtpView, VendorStartDeliverySearchView, VendorCancelDeliverySearchView,
 )
-from .admin import (
+from vendors.views.admin import (
     AdminVendorListView,
     AdminVendorDetailView,
     AdminVendorSalesReportView,
     AdminVendorOnboardView,
     AdminVendorStatusView,
 )
-from .payouts_and_misc import (
+from vendors.views.payouts_and_misc import (
     VendorPayoutListView, VendorPayoutApproveView, VendorPayoutDeclineView,
     VendorPayoutVerifyCreditView, VendorCouponViewSet, VendorReviewViewSet
 )
-
-from .admin_payouts import (
+from vendors.views.admin_payouts import (
     AdminVendorPayoutListView, AdminVendorPayoutDetailView,
     AdminVendorPayoutScheduleView, AdminVendorPayoutSendPaymentView,
     AdminVendorPayoutForcePaidView,

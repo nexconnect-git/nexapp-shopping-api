@@ -1,4 +1,4 @@
-from .base import BaseAction
+from vendors.actions.base import BaseAction
 from products.models import Product
 
 class SetStoreStatusAction(BaseAction):

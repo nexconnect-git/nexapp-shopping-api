@@ -10,7 +10,7 @@ from vendors.data import VendorOrderRepository, VendorProductRepository
 from products.serializers import ProductSerializer, ProductCreateUpdateSerializer
 from products.models import Product
 from orders.serializers import OrderSerializer
-from .public import StandardPagination
+from vendors.views.public import StandardPagination
 
 class VendorProfileView(APIView):
     permission_classes = [IsAuthenticated, IsVendor]

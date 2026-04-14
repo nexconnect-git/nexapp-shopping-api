@@ -76,7 +76,7 @@ class StartDeliverySearchActionTests(TestCase):
         self.customer = make_customer_user()
         self.order = make_order(self.vendor, self.customer, status="ready")
 
-    @patch("delivery.tasks.search_and_notify_partners")
+    @patch("vendors.actions.orders.search_and_notify_partners")
     def test_creates_assignment_and_enqueues_search(self, mock_task):
         mock_task.delay = MagicMock()
         StartDeliverySearchAction().execute(self.order)
@@ -86,7 +86,7 @@ class StartDeliverySearchActionTests(TestCase):
         self.assertEqual(assignment.current_radius_km, 2.0)
         mock_task.delay.assert_called_once_with(str(assignment.id))
 
-    @patch("delivery.tasks.search_and_notify_partners")
+    @patch("vendors.actions.orders.search_and_notify_partners")
     def test_resets_assignment_on_retry(self, mock_task):
         mock_task.delay = MagicMock()
         # Pre-existing timed_out assignment
@@ -120,7 +120,7 @@ class StartDeliverySearchActionTests(TestCase):
             StartDeliverySearchAction().execute(self.order)
         self.assertIn("already assigned", str(ctx.exception))
 
-    @patch("delivery.tasks.search_and_notify_partners")
+    @patch("vendors.actions.orders.search_and_notify_partners")
     def test_works_after_cancelled_assignment(self, mock_task):
         mock_task.delay = MagicMock()
         DeliveryAssignment.objects.create(order=self.order, status="cancelled")
@@ -237,7 +237,7 @@ class DeliverySearchEndpointTests(TestCase):
         self.order = make_order(self.vendor, self.customer, status="ready")
         self.client.force_authenticate(user=self.vendor_user)
 
-    @patch("delivery.tasks.search_and_notify_partners")
+    @patch("vendors.actions.orders.search_and_notify_partners")
     def test_start_delivery_search_returns_200(self, mock_task):
         mock_task.delay = MagicMock()
         url = f"/api/vendors/orders/{self.order.id}/start-delivery-search/"
@@ -245,7 +245,7 @@ class DeliverySearchEndpointTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(DeliveryAssignment.objects.get(order=self.order).status, "searching")
 
-    @patch("delivery.tasks.search_and_notify_partners")
+    @patch("vendors.actions.orders.search_and_notify_partners")
     def test_start_delivery_search_idempotency_error_when_already_searching(self, mock_task):
         mock_task.delay = MagicMock()
         DeliveryAssignment.objects.create(order=self.order, status="searching")
