@@ -54,6 +54,13 @@ class UpdateOrderStatusAction(BaseAction):
             data={"order_id": str(order.id), "order_number": order.order_number},
         )
 
+        # Auto-trigger delivery search when vendor marks order ready (if enabled for this vendor)
+        if new_status == "ready" and order.vendor.auto_order_acceptance:
+            try:
+                StartDeliverySearchAction().execute(order)
+            except ValueError:
+                pass  # Already searching or partner assigned — safe to ignore
+
         return order
 
 

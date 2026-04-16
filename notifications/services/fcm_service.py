@@ -2,8 +2,6 @@
 
 import logging
 
-import firebase_admin
-from firebase_admin import credentials, messaging
 from django.conf import settings
 
 from notifications.data import DeviceTokenRepository
@@ -11,6 +9,21 @@ from notifications.data import DeviceTokenRepository
 logger = logging.getLogger(__name__)
 
 _firebase_app = None
+_firebase_admin = None
+
+
+def _import_firebase():
+    """Lazy import of firebase_admin — returns the module or None if not installed."""
+    global _firebase_admin
+    if _firebase_admin is not None:
+        return _firebase_admin
+    try:
+        import firebase_admin
+        _firebase_admin = firebase_admin
+    except ImportError:
+        logger.warning("firebase_admin not installed — FCM disabled.")
+        _firebase_admin = False
+    return _firebase_admin if _firebase_admin else None
 
 
 def _get_firebase_app():
@@ -18,6 +31,10 @@ def _get_firebase_app():
     global _firebase_app
     if _firebase_app is not None:
         return _firebase_app
+
+    firebase_admin = _import_firebase()
+    if firebase_admin is None:
+        return None
 
     service_account_path = getattr(settings, 'FIREBASE_SERVICE_ACCOUNT_PATH', None)
     if not service_account_path:
@@ -29,6 +46,7 @@ def _get_firebase_app():
         _firebase_app = firebase_admin.get_app()
     except ValueError:
         try:
+            from firebase_admin import credentials
             cred = credentials.Certificate(service_account_path)
             _firebase_app = firebase_admin.initialize_app(cred)
         except Exception as exc:

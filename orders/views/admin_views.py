@@ -103,18 +103,32 @@ class AdminOrderIssueDetailView(APIView):
         issue.save()
         return Response(OrderIssueSerializer(issue).data)
 
+_PLATFORM_SETTING_FIELDS = [
+    "upi_id",
+    "delivery_base_fee",
+    "delivery_per_km_fee",
+    "free_delivery_above",
+    "cancellation_window_minutes",
+    "cancellation_allowed_statuses",
+]
+
+
 class AdminPlatformSettingView(APIView):
     permission_classes = [IsAuthenticated, IsAdminRole]
 
     def get(self, request):
         from orders.models.setting import PlatformSetting
         setting = PlatformSetting.get_setting()
-        return Response({"upi_id": setting.upi_id})
+        return Response({f: getattr(setting, f) for f in _PLATFORM_SETTING_FIELDS})
 
     def patch(self, request):
         from orders.models.setting import PlatformSetting
         setting = PlatformSetting.get_setting()
-        if "upi_id" in request.data:
-            setting.upi_id = request.data["upi_id"]
-            setting.save()
-        return Response({"upi_id": setting.upi_id})
+        updated = []
+        for field in _PLATFORM_SETTING_FIELDS:
+            if field in request.data:
+                setattr(setting, field, request.data[field])
+                updated.append(field)
+        if updated:
+            setting.save(update_fields=updated)
+        return Response({f: getattr(setting, f) for f in _PLATFORM_SETTING_FIELDS})

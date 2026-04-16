@@ -11,6 +11,8 @@ from accounts.views.address_views import AddressViewSet
 from accounts.views.admin_views import AdminUserViewSet
 from accounts.views.admin_customers import AdminCustomerViewSet
 from accounts.views.admin_stats import AdminStatsView
+from accounts.views.wallet_views import WalletView, InitiateWalletTopUpView, VerifyWalletTopUpView
+from accounts.views.loyalty_views import LoyaltyView
 
 __all__ = [
     'RegisterView',
@@ -25,4 +27,8 @@ __all__ = [
     'AdminUserViewSet',
     'AdminCustomerViewSet',
     'AdminStatsView',
+    'WalletView',
+    'InitiateWalletTopUpView',
+    'VerifyWalletTopUpView',
+    'LoyaltyView',
 ]

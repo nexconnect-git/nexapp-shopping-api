@@ -32,6 +32,17 @@ class AddToCartView(APIView):
             return Response({"error": "Product not found or unavailable."}, status=status.HTTP_404_NOT_FOUND)
 
         cart, _ = CartRepository.get_or_create_cart(request.user)
+
+        # Enforce single-vendor cart
+        existing_items = cart.items.select_related("product__vendor").all()
+        if existing_items.exists():
+            existing_vendor_id = str(existing_items.first().product.vendor_id)
+            if existing_vendor_id != str(product.vendor_id):
+                return Response(
+                    {"error": "Your cart contains items from a different vendor. Clear your cart first."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
         _, created = CartRepository.add_item(cart, product, quantity)
 
         return Response(

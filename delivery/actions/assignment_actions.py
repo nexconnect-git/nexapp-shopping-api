@@ -8,6 +8,7 @@ from delivery.data.assignment_repo import DeliveryAssignmentRepository
 from orders.data.order_repo import OrderRepository
 from delivery.tasks import search_and_notify_partners, _expand_and_retry
 from notifications.models import Notification
+from helpers.geo_helpers import calculate_eta_minutes
 
 
 class AcceptAssignmentAction:
@@ -32,7 +33,22 @@ class AcceptAssignmentAction:
         old_status = order.status
         order.delivery_partner = user
         order.pickup_otp = str(random.randint(100000, 999999))
-        order.save(update_fields=["delivery_partner", "pickup_otp", "updated_at"])
+
+        # Calculate ETA if all coordinates are available
+        save_fields = ["delivery_partner", "pickup_otp", "updated_at"]
+        if (
+            partner.current_latitude and partner.current_longitude
+            and order.vendor.latitude and order.vendor.longitude
+            and order.delivery_latitude and order.delivery_longitude
+        ):
+            order.estimated_delivery_time = calculate_eta_minutes(
+                float(partner.current_latitude), float(partner.current_longitude),
+                float(order.vendor.latitude), float(order.vendor.longitude),
+                float(order.delivery_latitude), float(order.delivery_longitude),
+            )
+            save_fields.append("estimated_delivery_time")
+
+        order.save(update_fields=save_fields)
 
         assignment.status = "accepted"
         assignment.accepted_partner = partner

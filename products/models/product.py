@@ -58,4 +58,4 @@ class Product(models.Model):
     def in_stock(self):
         if not self.is_available:
             return False
-        return True if self.stock >= 0 else False
+        return self.stock > 0

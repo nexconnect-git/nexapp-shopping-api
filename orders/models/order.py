@@ -42,11 +42,21 @@ class Order(models.Model):
     payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES, default='cod')
     razorpay_order_id = models.CharField(max_length=100, blank=True, default='')
     razorpay_payment_id = models.CharField(max_length=100, blank=True, default='')
+    razorpay_refund_id = models.CharField(max_length=100, blank=True, default='')
+    REFUND_STATUS_CHOICES = (
+        ('none', 'No Refund'),
+        ('initiated', 'Refund Initiated'),
+        ('processed', 'Refund Processed'),
+        ('failed', 'Refund Failed'),
+    )
+    refund_status = models.CharField(max_length=20, choices=REFUND_STATUS_CHOICES, default='none')
     is_payment_verified = models.BooleanField(default=False)
     coupon = models.ForeignKey(
         'orders.Coupon', on_delete=models.SET_NULL, null=True, blank=True, related_name='orders'
     )
     coupon_discount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    wallet_discount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    scheduled_for = models.DateTimeField(null=True, blank=True, help_text='Customer-requested delivery time')
     notes = models.TextField(blank=True)
     pickup_otp = models.CharField(max_length=6, blank=True, default='')
     delivery_otp = models.CharField(max_length=6, blank=True, default='')

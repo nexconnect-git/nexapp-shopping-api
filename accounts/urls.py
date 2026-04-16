@@ -16,6 +16,10 @@ urlpatterns = [
     path('verify-email/', views.VerifyEmailView.as_view(), name='verify-email'),
     path('profile/', views.ProfileView.as_view(), name='profile'),
     path('change-password/', views.ChangePasswordView.as_view(), name='change-password'),
+    path('wallet/', views.WalletView.as_view(), name='wallet'),
+    path('wallet/topup/', views.InitiateWalletTopUpView.as_view(), name='wallet-topup'),
+    path('wallet/verify-topup/', views.VerifyWalletTopUpView.as_view(), name='wallet-verify-topup'),
+    path('loyalty/', views.LoyaltyView.as_view(), name='loyalty'),
     path('setup/', views.SetupSuperUserView.as_view(), name='setup'),
     path('', include(router.urls)),
 ]

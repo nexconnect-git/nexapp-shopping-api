@@ -1,3 +1,4 @@
+import logging
 from typing import Dict, Any
 from django.db import transaction
 
@@ -5,12 +6,44 @@ from products.models import Product, ProductImage
 from vendors.models import Vendor
 from .base import BaseAction
 
+logger = logging.getLogger(__name__)
+
+
 class DecreaseStockAction(BaseAction):
     @transaction.atomic
     def execute(self, product_id: str, quantity: int) -> Product:
         product = Product.objects.select_for_update().get(pk=product_id)
+        prev_stock = product.stock
         product.stock = max(0, product.stock - quantity)
-        product.save(update_fields=["stock"])
+        update_fields = ["stock", "updated_at"]
+        if product.stock == 0 and product.status == "active":
+            product.status = "sold_out"
+            update_fields.append("status")
+        product.save(update_fields=update_fields)
+
+        # Notify vendor when stock crosses low_stock_threshold
+        threshold = product.low_stock_threshold or 0
+        if (
+            threshold > 0
+            and prev_stock > threshold
+            and 0 < product.stock <= threshold
+        ):
+            try:
+                from notifications.models import Notification
+                vendor_user = product.vendor.user
+                Notification.objects.create(
+                    user=vendor_user,
+                    title="Low Stock Alert",
+                    message=(
+                        f"'{product.name}' is running low — only {product.stock} unit(s) remaining "
+                        f"(threshold: {threshold})."
+                    ),
+                    notification_type='system',
+                    data={'product_id': str(product.pk), 'stock': product.stock},
+                )
+            except Exception as exc:
+                logger.warning("Could not send low stock notification: %s", exc)
+
         return product
 
 

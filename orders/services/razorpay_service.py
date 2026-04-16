@@ -74,6 +74,25 @@ class RazorpayService:
         except razorpay.errors.SignatureVerificationError:
             return False
 
+    def create_refund(self, payment_id: str, amount_inr: float) -> dict:
+        """Initiate a Razorpay refund for a captured payment.
+
+        Args:
+            payment_id: The ``razorpay_payment_id`` to refund.
+            amount_inr: Amount to refund in INR (converted to paise).
+
+        Returns:
+            Razorpay refund dict containing at least ``id``, ``amount``, ``status``.
+        """
+        amount_paise = int(amount_inr * 100)
+        try:
+            refund = _client().payment.refund(payment_id, {'amount': amount_paise, 'speed': 'normal'})
+            logger.info("Razorpay refund initiated: %s for ₹%.2f", refund.get('id'), amount_inr)
+            return refund
+        except Exception as exc:
+            logger.error("Razorpay refund failed for payment %s: %s", payment_id, exc)
+            raise
+
     def verify_webhook_signature(self, payload_body: bytes, signature: str) -> bool:
         """Verify the signature on an incoming Razorpay webhook.
 

@@ -13,6 +13,8 @@ urlpatterns = [
     path('cart/add/', views.AddToCartView.as_view(), name='cart-add'),
     path('cart/items/<uuid:pk>/', views.UpdateCartItemView.as_view(), name='cart-item-update'),
     path('cart/clear/', views.ClearCartView.as_view(), name='cart-clear'),
+    path('cancellation-policy/', views.CancellationPolicyView.as_view(), name='cancellation-policy'),
+    path('delivery-fee-preview/', views.DeliveryFeePreviewView.as_view(), name='delivery-fee-preview'),
     path('create/', views.CreateOrderView.as_view(), name='order-create'),
     path('list/', views.OrderListView.as_view(), name='order-list'),
     path('razorpay-webhook/', views.RazorpayWebhookView.as_view(), name='razorpay-webhook'),
@@ -23,6 +25,7 @@ urlpatterns = [
     path('<uuid:pk>/create-payment/', views.CreateRazorpayOrderView.as_view(), name='order-create-payment'),
     path('<uuid:pk>/verify-payment/', views.VerifyRazorpayPaymentView.as_view(), name='order-verify-payment'),
     path('<uuid:pk>/rate/', views.SubmitOrderRatingView.as_view(), name='order-rate'),
+    path('<uuid:pk>/reorder/', views.ReorderView.as_view(), name='order-reorder'),
     # Order Issues
     path('issues/', views.CustomerOrderIssueListCreateView.as_view(), name='issue-list'),
     path('issues/<uuid:pk>/', views.CustomerOrderIssueDetailView.as_view(), name='issue-detail'),

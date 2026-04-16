@@ -106,6 +106,10 @@ class RazorpayWebhookView(APIView):
         event = payload.get('event', '')
         if event == 'payment.captured':
             self._handle_payment_captured(payload)
+        elif event == 'refund.processed':
+            self._handle_refund_event(payload, 'processed')
+        elif event == 'refund.failed':
+            self._handle_refund_event(payload, 'failed')
 
         return Response({'status': 'ok'})
 
@@ -134,3 +138,25 @@ class RazorpayWebhookView(APIView):
                 logger.info("Webhook: payment verified for order %s", order.order_number)
         except (KeyError, TypeError) as exc:
             logger.error("Webhook payload parse error: %s", exc)
+
+    @staticmethod
+    def _handle_refund_event(payload: dict, new_status: str) -> None:
+        """Update refund_status on the order when Razorpay confirms or fails a refund."""
+        try:
+            refund = payload['payload']['refund']['entity']
+            refund_id = refund.get('id', '')
+            if not refund_id:
+                return
+
+            from orders.models import Order
+            try:
+                order = Order.objects.get(razorpay_refund_id=refund_id)
+            except Order.DoesNotExist:
+                logger.warning("Webhook: no order found for razorpay_refund_id=%s", refund_id)
+                return
+
+            order.refund_status = new_status
+            order.save(update_fields=['refund_status', 'updated_at'])
+            logger.info("Webhook: refund %s for order %s", new_status, order.order_number)
+        except (KeyError, TypeError) as exc:
+            logger.error("Refund webhook parse error: %s", exc)

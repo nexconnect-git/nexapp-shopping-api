@@ -46,11 +46,13 @@ class OrderSerializer(serializers.ModelSerializer):
             "vendor_name", "vendor_info", "delivery_address", "delivery_partner",
             "delivery_partner_info", "status", "assignment_status", "invoice_id",
             "has_rating", "payment_method", "subtotal", "delivery_fee", "discount",
-            "coupon_discount", "total",
+            "coupon_discount", "wallet_discount", "total",
             "notes", "pickup_otp", "delivery_otp", "delivery_photo",
             "estimated_delivery_time", "actual_delivery_time",
             "delivery_latitude", "delivery_longitude",
             "vendor_payout", "delivery_payout",
+            "razorpay_refund_id", "refund_status",
+            "scheduled_for",
             "placed_at", "updated_at", "items", "tracking",
         ]
         read_only_fields = [
@@ -171,9 +173,11 @@ class CreateOrderSerializer(serializers.Serializer):
     """Write serializer for placing a new order from the cart."""
 
     delivery_address_id = serializers.UUIDField()
-    payment_method = serializers.ChoiceField(choices=["cod"], default="cod")
+    payment_method = serializers.ChoiceField(choices=["cod", "razorpay"], default="cod")
     notes = serializers.CharField(required=False, default="", allow_blank=True)
     coupon_code = serializers.CharField(required=False, allow_blank=True, default="")
+    wallet_amount = serializers.DecimalField(required=False, default=0, max_digits=12, decimal_places=2, min_value=0)
+    scheduled_for = serializers.DateTimeField(required=False, allow_null=True, default=None)
 
     def validate_delivery_address_id(self, value):
         """Verify the delivery address belongs to the requesting user.

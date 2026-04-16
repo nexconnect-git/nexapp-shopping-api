@@ -3,6 +3,7 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from orders.models import Order
 from delivery.models import DeliveryPartner
+from helpers.geo_helpers import calculate_eta_minutes
 
 class DeliveryTrackingConsumer(AsyncWebsocketConsumer):
     async def connect(self):
@@ -34,33 +35,72 @@ class DeliveryTrackingConsumer(AsyncWebsocketConsumer):
 
     async def receive(self, text_data):
         data = json.loads(text_data)
-        
+
         # Expecting { 'action': 'update_location', 'lat': 12.x, 'lng': 77.x }
         if data.get('action') == 'update_location':
             lat = data.get('lat')
             lng = data.get('lng')
-            
-            # Broadcast to everyone tracking this order
+
+            # Persist partner coordinates and get updated ETA
+            eta_minutes = await self.update_partner_location_and_eta(
+                self.order_id, self.scope['user'], lat, lng
+            )
+
+            # Broadcast location to everyone tracking this order
             await self.channel_layer.group_send(
                 self.room_group_name,
                 {
                     'type': 'location_update',
                     'lat': lat,
                     'lng': lng,
-                    'partner_id': data.get('partner_id')
+                    'partner_id': data.get('partner_id'),
                 }
             )
-            
-            # Optionally update DB status asynchronously here
-            # await self.update_partner_location(data.get('partner_id'), lat, lng)
+
+            # Broadcast updated ETA if available
+            if eta_minutes is not None:
+                await self.channel_layer.group_send(
+                    self.room_group_name,
+                    {'type': 'eta_update', 'eta_minutes': eta_minutes}
+                )
 
     async def location_update(self, event):
         await self.send(text_data=json.dumps({
             'type': 'location_update',
             'lat': event['lat'],
             'lng': event['lng'],
-            'partner_id': event.get('partner_id')
+            'partner_id': event.get('partner_id'),
         }))
+
+    async def eta_update(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'eta_update',
+            'eta_minutes': event['eta_minutes'],
+        }))
+
+    @database_sync_to_async
+    def update_partner_location_and_eta(self, order_id, user, lat, lng):
+        """Persist partner GPS coords and return a recalculated ETA (int minutes) or None."""
+        if lat is None or lng is None:
+            return None
+        try:
+            partner = user.delivery_profile
+            DeliveryPartner.objects.filter(pk=partner.pk).update(
+                current_latitude=lat, current_longitude=lng
+            )
+            order = Order.objects.select_related('vendor').get(pk=order_id)
+            if (
+                order.vendor.latitude and order.vendor.longitude
+                and order.delivery_latitude and order.delivery_longitude
+            ):
+                return calculate_eta_minutes(
+                    float(lat), float(lng),
+                    float(order.vendor.latitude), float(order.vendor.longitude),
+                    float(order.delivery_latitude), float(order.delivery_longitude),
+                )
+        except Exception:
+            pass
+        return None
 
     @database_sync_to_async
     def check_tracking_access(self, order_id, user):
