@@ -143,9 +143,9 @@ class CreateRazorpayOrderView(APIView):
         if not order or order.customer != request.user:
             return Response({'error': 'Order not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        if order.status not in ('placed', 'confirmed'):
+        if order.status in ('delivered', 'cancelled'):
             return Response(
-                {'error': f"Cannot initiate payment for an order with status '{order.status}'."},
+                {'error': f"Cannot initiate payment for a {order.status} order."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
