@@ -51,7 +51,7 @@ class OrderSerializer(serializers.ModelSerializer):
             "estimated_delivery_time", "actual_delivery_time",
             "delivery_latitude", "delivery_longitude",
             "vendor_payout", "delivery_payout",
-            "razorpay_refund_id", "refund_status",
+            "is_payment_verified", "razorpay_refund_id", "refund_status",
             "scheduled_for",
             "placed_at", "updated_at", "items", "tracking",
         ]
@@ -178,6 +178,10 @@ class CreateOrderSerializer(serializers.Serializer):
     coupon_code = serializers.CharField(required=False, allow_blank=True, default="")
     wallet_amount = serializers.DecimalField(required=False, default=0, max_digits=12, decimal_places=2, min_value=0)
     scheduled_for = serializers.DateTimeField(required=False, allow_null=True, default=None)
+    # Optional: pre-verified Razorpay payment proof (from the new initiate-first flow)
+    razorpay_order_id = serializers.CharField(required=False, allow_blank=True, default="")
+    razorpay_payment_id = serializers.CharField(required=False, allow_blank=True, default="")
+    razorpay_signature = serializers.CharField(required=False, allow_blank=True, default="")
 
     def validate_delivery_address_id(self, value):
         """Verify the delivery address belongs to the requesting user.

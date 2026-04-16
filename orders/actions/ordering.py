@@ -205,17 +205,18 @@ class CancelOrderAction(BaseAction):
         except Order.DoesNotExist:
             raise ValueError("Order not found.")
 
-        from orders.models.setting import PlatformSetting
-        setting = PlatformSetting.get_setting()
-
-        allowed_statuses = setting.cancellation_allowed_statuses or ["placed", "confirmed", "preparing"]
-        if order.status not in allowed_statuses:
-            if order.status in ["picked_up", "on_the_way", "delivered"]:
-                raise ValueError("Order can't be cancelled because it is already dispatched.")
+        # Customers may cancel up to and including "ready" (before dispatch)
+        customer_allowed = ["placed", "confirmed", "preparing", "ready"]
+        if order.status not in customer_allowed:
+            if order.status == "delivered":
+                raise ValueError("Delivered orders cannot be cancelled.")
             raise ValueError(
-                f"Orders with status '{order.status}' cannot be cancelled."
+                "Orders that are already dispatched or delivered cannot be cancelled. "
+                "Please contact support."
             )
 
+        from orders.models.setting import PlatformSetting
+        setting = PlatformSetting.get_setting()
         if setting.cancellation_window_minutes > 0:
             elapsed_minutes = (timezone.now() - order.placed_at).total_seconds() / 60
             if elapsed_minutes > setting.cancellation_window_minutes:
@@ -282,8 +283,8 @@ class AdminUpdateOrderStatusAction(BaseAction):
         if new_status not in valid_statuses:
             raise ValueError("Invalid status.")
 
-        if new_status == "cancelled" and order.status in ["picked_up", "on_the_way", "delivered"]:
-            raise ValueError("Order can't be cancelled because it is dispatched.")
+        if new_status == "cancelled" and order.status == "delivered":
+            raise ValueError("Delivered orders cannot be cancelled.")
 
         old_status = order.status
         order.status = new_status

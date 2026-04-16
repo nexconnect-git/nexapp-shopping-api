@@ -15,6 +15,7 @@ urlpatterns = [
     path('cart/clear/', views.ClearCartView.as_view(), name='cart-clear'),
     path('cancellation-policy/', views.CancellationPolicyView.as_view(), name='cancellation-policy'),
     path('delivery-fee-preview/', views.DeliveryFeePreviewView.as_view(), name='delivery-fee-preview'),
+    path('initiate-checkout-payment/', views.InitiateCheckoutPaymentView.as_view(), name='initiate-checkout-payment'),
     path('create/', views.CreateOrderView.as_view(), name='order-create'),
     path('list/', views.OrderListView.as_view(), name='order-list'),
     path('razorpay-webhook/', views.RazorpayWebhookView.as_view(), name='razorpay-webhook'),

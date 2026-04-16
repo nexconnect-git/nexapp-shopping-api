@@ -1,26 +1,36 @@
 import random
+from decimal import Decimal
+from django.db import transaction
 from django.utils import timezone
 from vendors.actions.base import BaseAction
 from orders.models import OrderTracking
 from notifications.models import Notification
 from delivery.models import DeliveryAssignment
 from delivery.tasks import search_and_notify_partners
+from backend.events import order_cancelled
 
 
 class UpdateOrderStatusAction(BaseAction):
     def execute(self, order, new_status: str, cancel_reason: str = None):
         cancel_reason = (cancel_reason or "").strip()
-        allowed_transitions = {
-            "placed": ["confirmed"],
-            "confirmed": ["preparing"],
-            "preparing": ["ready"],
-        }
-        current_allowed = allowed_transitions.get(order.status, [])
-        if new_status not in current_allowed:
-            raise ValueError(f"Cannot transition from '{order.status}' to '{new_status}'.")
-
-        if new_status == "cancelled" and not cancel_reason:
-            raise ValueError("A cancellation reason is required.")
+        # Vendors may cancel any order that hasn't been picked up yet
+        vendor_cancel_allowed = ["placed", "confirmed", "preparing", "ready"]
+        if new_status == "cancelled":
+            if order.status not in vendor_cancel_allowed:
+                raise ValueError(
+                    "Cannot cancel an order that has already been dispatched or delivered."
+                )
+            if not cancel_reason:
+                raise ValueError("A cancellation reason is required.")
+        else:
+            allowed_transitions = {
+                "placed": ["confirmed"],
+                "confirmed": ["preparing"],
+                "preparing": ["ready"],
+            }
+            current_allowed = allowed_transitions.get(order.status, [])
+            if new_status not in current_allowed:
+                raise ValueError(f"Cannot transition from '{order.status}' to '{new_status}'.")
 
         if new_status == "ready":
             order.delivery_otp = str(random.randint(100000, 999999))
@@ -60,6 +70,41 @@ class UpdateOrderStatusAction(BaseAction):
                 StartDeliverySearchAction().execute(order)
             except ValueError:
                 pass  # Already searching or partner assigned — safe to ignore
+
+        if new_status == "cancelled":
+            # Restore stock for each item
+            from products.models import Product as ProductModel
+            for item in order.items.select_related("product").all():
+                if item.product:
+                    ProductModel.objects.filter(pk=item.product.pk).update(
+                        stock=item.product.stock + item.quantity,
+                    )
+                    if item.product.status == "sold_out":
+                        ProductModel.objects.filter(pk=item.product.pk).update(status="active")
+
+            # Refund wallet discount if any was applied
+            if order.wallet_discount > Decimal("0"):
+                try:
+                    from accounts.actions.wallet_actions import CreditWalletAction
+                    CreditWalletAction.execute(
+                        user=order.customer,
+                        amount=order.wallet_discount,
+                        source='refund',
+                        reference_id=str(order.pk),
+                        description=f"Wallet refund for vendor-cancelled order {order.order_number}",
+                    )
+                except Exception:
+                    pass
+
+            # Issue Razorpay refund if order was paid online
+            if order.payment_method == 'razorpay' and order.is_payment_verified and not order.razorpay_refund_id:
+                try:
+                    from orders.actions.refund_actions import IssueRazorpayRefundAction
+                    IssueRazorpayRefundAction().execute(order)
+                except Exception:
+                    pass
+
+            order_cancelled.send(sender=order.__class__, order=order)
 
         return order
 

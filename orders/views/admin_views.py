@@ -12,6 +12,12 @@ from orders.data.issue_repo import IssueRepository
 from orders.models import Order, OrderIssue
 from orders.serializers import OrderSerializer, OrderIssueSerializer
 
+__all__ = [
+    'AdminOrderListView', 'AdminOrderDetailView',
+    'AdminOrderIssueListView', 'AdminOrderIssueDetailView',
+    'AdminPlatformSettingView', 'AdminPaymentsView',
+]
+
 
 class AdminOrderPagination(PageNumberPagination):
     page_size = 20
@@ -102,6 +108,39 @@ class AdminOrderIssueDetailView(APIView):
 
         issue.save()
         return Response(OrderIssueSerializer(issue).data)
+
+class AdminPaymentsView(generics.ListAPIView):
+    """GET /api/admin/payments/
+    Returns a paginated list of orders that have online payment data,
+    filterable by payment method and verification status.
+    """
+
+    permission_classes = [IsAuthenticated, IsAdminRole]
+    serializer_class = OrderSerializer
+
+    def get_queryset(self):
+        qs = Order.objects.select_related(
+            'customer', 'vendor'
+        ).order_by('-placed_at')
+        method = self.request.query_params.get('method')
+        if method:
+            qs = qs.filter(payment_method=method)
+        verified = self.request.query_params.get('verified')
+        if verified == '1':
+            qs = qs.filter(is_payment_verified=True)
+        elif verified == '0':
+            qs = qs.filter(is_payment_verified=False, payment_method='razorpay')
+        search = self.request.query_params.get('search')
+        if search:
+            qs = qs.filter(order_number__icontains=search)
+        return qs
+
+    def get(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        paginator = AdminOrderPagination()
+        page = paginator.paginate_queryset(queryset, request)
+        return paginator.get_paginated_response(OrderSerializer(page, many=True).data)
+
 
 _PLATFORM_SETTING_FIELDS = [
     "upi_id",

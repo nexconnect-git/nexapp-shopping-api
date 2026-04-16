@@ -27,20 +27,49 @@ class CreateOrderView(APIView):
     def post(self, request):
         serializer = CreateOrderSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
+        vd = serializer.validated_data
         try:
             action = CreateOrdersFromCartAction()
             created_orders = action.execute(
                 user=request.user,
-                delivery_address_id=serializer.validated_data["delivery_address_id"],
-                payment_method=serializer.validated_data.get("payment_method", "cod"),
-                notes=serializer.validated_data.get("notes", ""),
-                coupon_code=serializer.validated_data.get("coupon_code", "").strip().upper(),
-                wallet_amount=serializer.validated_data.get("wallet_amount", Decimal("0")),
-                scheduled_for=serializer.validated_data.get("scheduled_for"),
+                delivery_address_id=vd["delivery_address_id"],
+                payment_method=vd.get("payment_method", "cod"),
+                notes=vd.get("notes", ""),
+                coupon_code=vd.get("coupon_code", "").strip().upper(),
+                wallet_amount=vd.get("wallet_amount", Decimal("0")),
+                scheduled_for=vd.get("scheduled_for"),
             )
-            return Response(OrderSerializer(created_orders, many=True).data, status=status.HTTP_201_CREATED)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        # If Razorpay payment proof was provided (new initiate-first flow),
+        # verify the signature and mark all created orders as paid.
+        rz_order_id = vd.get("razorpay_order_id", "").strip()
+        rz_payment_id = vd.get("razorpay_payment_id", "").strip()
+        rz_signature = vd.get("razorpay_signature", "").strip()
+
+        if rz_order_id and rz_payment_id and rz_signature:
+            from orders.services.razorpay_service import RazorpayService
+            valid = RazorpayService().verify_payment_signature(
+                razorpay_order_id=rz_order_id,
+                razorpay_payment_id=rz_payment_id,
+                razorpay_signature=rz_signature,
+            )
+            if valid:
+                Order.objects.filter(pk__in=[o.pk for o in created_orders]).update(
+                    razorpay_order_id=rz_order_id,
+                    razorpay_payment_id=rz_payment_id,
+                    is_payment_verified=True,
+                )
+                for o in created_orders:
+                    o.is_payment_verified = True
+            else:
+                import logging as _log
+                _log.getLogger(__name__).warning(
+                    "Invalid Razorpay signature on order creation for user %s", request.user.id
+                )
+
+        return Response(OrderSerializer(created_orders, many=True).data, status=status.HTTP_201_CREATED)
 
 
 class OrderListView(generics.ListAPIView):
@@ -169,7 +198,7 @@ class CancellationPolicyView(APIView):
         setting = PlatformSetting.get_setting()
         return Response({
             'window_minutes': setting.cancellation_window_minutes,
-            'allowed_statuses': setting.cancellation_allowed_statuses or ['placed', 'confirmed', 'preparing'],
+            'allowed_statuses': ['placed', 'confirmed', 'preparing', 'ready'],
         })
 
 
