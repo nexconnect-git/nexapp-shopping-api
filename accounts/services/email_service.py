@@ -17,7 +17,7 @@ class EmailService:
                 'Your account has been created successfully.\n\n'
                 'Thank you for joining NexConnect!'
             ),
-            from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@nexconnect.com'),
+            from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@nex-connect.in'),
             recipient_list=[user.email],
             fail_silently=True,
         )
@@ -32,7 +32,7 @@ class EmailService:
                 'Your password was recently changed. If you did not make this '
                 'change, please contact support immediately.'
             ),
-            from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@nexconnect.com'),
+            from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@nex-connect.in'),
             recipient_list=[user.email],
             fail_silently=True,
         )
@@ -53,7 +53,7 @@ class EmailService:
                 'This code expires in 15 minutes.\n\n'
                 'If you did not request this, please ignore this email.'
             ),
-            from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@nexconnect.com'),
+            from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@nex-connect.in'),
             recipient_list=[user.email],
             fail_silently=False,
         )
