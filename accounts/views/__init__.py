@@ -13,6 +13,7 @@ from accounts.views.admin_customers import AdminCustomerViewSet
 from accounts.views.admin_stats import AdminStatsView
 from accounts.views.wallet_views import WalletView, InitiateWalletTopUpView, VerifyWalletTopUpView
 from accounts.views.loyalty_views import LoyaltyView
+from accounts.views.password_reset_views import RequestPasswordResetView, ConfirmPasswordResetView
 
 __all__ = [
     'RegisterView',
@@ -31,4 +32,6 @@ __all__ = [
     'InitiateWalletTopUpView',
     'VerifyWalletTopUpView',
     'LoyaltyView',
+    'RequestPasswordResetView',
+    'ConfirmPasswordResetView',
 ]

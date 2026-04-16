@@ -3,6 +3,8 @@
 from django.core.mail import send_mail
 from django.conf import settings
 
+FRONTEND_URL = getattr(settings, 'FRONTEND_URL', 'https://nex-connect.in')
+
 
 class EmailService:
     """Stateless service for sending account-related emails."""
@@ -31,6 +33,23 @@ class EmailService:
                 f'Hi {user.first_name or user.username},\n\n'
                 'Your password was recently changed. If you did not make this '
                 'change, please contact support immediately.'
+            ),
+            from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@nex-connect.in'),
+            recipient_list=[user.email],
+            fail_silently=True,
+        )
+
+    @staticmethod
+    def send_password_reset_email(user, token: str) -> None:
+        """Send a password-reset link to the user's email address."""
+        reset_url = f"{FRONTEND_URL}/reset-password?token={token}"
+        send_mail(
+            subject='Reset your NexConnect password',
+            message=(
+                f'Hi {user.first_name or user.username},\n\n'
+                'We received a request to reset your password.\n\n'
+                f'Click the link below to set a new password (valid for 1 hour):\n{reset_url}\n\n'
+                'If you did not request this, you can safely ignore this email.'
             ),
             from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@nex-connect.in'),
             recipient_list=[user.email],

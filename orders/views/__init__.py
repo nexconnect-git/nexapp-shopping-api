@@ -8,6 +8,7 @@ from orders.views.order_views import (
 from orders.views.coupon_views import ValidateCouponView, CustomerCouponListView, AdminCouponViewSet
 from orders.views.issue_views import CustomerOrderIssueListCreateView, CustomerOrderIssueDetailView, IssueMessageCreateView
 from orders.views.admin_views import AdminOrderListView, AdminOrderDetailView, AdminOrderIssueListView, AdminOrderIssueDetailView, AdminPlatformSettingView, AdminPaymentsView
+from orders.views.banner_views import BannerListView
 
 __all__ = [
     'CartView', 'AddToCartView', 'UpdateCartItemView', 'ClearCartView',
@@ -18,4 +19,5 @@ __all__ = [
     'ValidateCouponView', 'CustomerCouponListView', 'AdminCouponViewSet',
     'CustomerOrderIssueListCreateView', 'CustomerOrderIssueDetailView', 'IssueMessageCreateView',
     'AdminOrderListView', 'AdminOrderDetailView', 'AdminOrderIssueListView', 'AdminOrderIssueDetailView', 'AdminPlatformSettingView', 'AdminPaymentsView',
+    'BannerListView',
 ]

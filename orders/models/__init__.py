@@ -5,6 +5,7 @@ from .order_rating import OrderRating
 from .order_tracking import OrderTracking
 from .order_issue import OrderIssue, IssueMessage
 from .setting import PlatformSetting
+from .banner import PlatformBanner
 
 __all__ = [
     'Cart',
@@ -18,4 +19,5 @@ __all__ = [
     'OrderIssue',
     'IssueMessage',
     'PlatformSetting',
+    'PlatformBanner',
 ]

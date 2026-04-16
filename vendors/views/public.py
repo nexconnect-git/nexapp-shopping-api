@@ -9,6 +9,7 @@ from accounts.serializers import UserProfileSerializer
 from vendors.serializers.public import VendorRegistrationSerializer, VendorListSerializer, VendorSerializer
 from vendors.data import VendorRepository
 from backend.utils import haversine
+from helpers.geo_helpers import calculate_eta_minutes
 
 class StandardPagination(PageNumberPagination):
     page_size = 20
@@ -75,10 +76,18 @@ class NearbyVendorsView(APIView):
         vendors = VendorRepository().get_approved_vendors(category=category)
         nearby = []
         for v in vendors:
-            distance = haversine(lat, lng, float(v.latitude), float(v.longitude))
+            v_lat = float(v.latitude)
+            v_lng = float(v.longitude)
+            distance = haversine(lat, lng, v_lat, v_lng)
             if distance <= radius_km:
                 data = VendorListSerializer(v).data
                 data["distance_km"] = round(distance, 2)
+                data["estimated_delivery_minutes"] = calculate_eta_minutes(
+                    partner_lat=v_lat, partner_lng=v_lng,
+                    vendor_lat=v_lat, vendor_lng=v_lng,
+                    customer_lat=lat, customer_lng=lng,
+                    avg_speed_kmh=25, prep_buffer_minutes=10,
+                )
                 nearby.append(data)
         
         nearby.sort(key=lambda x: x["distance_km"])

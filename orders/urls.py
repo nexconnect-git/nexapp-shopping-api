@@ -6,6 +6,7 @@ router = DefaultRouter()
 router.register(r'admin-coupons', views.AdminCouponViewSet, basename='admin-coupon')
 
 urlpatterns = [
+    path('banners/', views.BannerListView.as_view(), name='banner-list'),
     path('coupons/', views.CustomerCouponListView.as_view(), name='coupon-list'),
     path('coupons/validate/', views.ValidateCouponView.as_view(), name='coupon-validate'),
     path('', include(router.urls)),
