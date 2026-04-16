@@ -1,5 +1,6 @@
 """Repository for Category ORM queries."""
 
+from django.db import models
 from products.models.category import Category
 
 
@@ -23,6 +24,22 @@ class CategoryRepository:
     def get_active_root():
         """Return active root (no parent) categories."""
         return Category.objects.filter(is_active=True, parent__isnull=True)
+
+    @staticmethod
+    def get_customer_visible():
+        """Return active root categories that are visible in the customer UI and have at least one product."""
+        return (
+            Category.objects.filter(
+                is_active=True,
+                show_in_customer_ui=True,
+                parent__isnull=True,
+            )
+            .filter(
+                models.Q(products__isnull=False) |
+                models.Q(children__products__isnull=False)
+            )
+            .distinct()
+        )
 
     @staticmethod
     def filter(parent_id=None, is_root: bool = False):

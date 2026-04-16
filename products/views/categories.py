@@ -8,4 +8,4 @@ class CategoryListView(generics.ListAPIView):
     serializer_class = CategorySerializer
 
     def get_queryset(self):
-        return CategoryRepository.get_active_root()
+        return CategoryRepository.get_customer_visible()

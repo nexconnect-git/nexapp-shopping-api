@@ -10,6 +10,8 @@ review_router = DefaultRouter()
 review_router.register(r'reviews', views.VendorReviewViewSet, basename='vendor-review')
 
 urlpatterns = [
+    path('categories/', views.VendorCategoryListCreateView.as_view(), name='vendor-category-list-create'),
+    path('categories/<uuid:pk>/subcategories/', views.VendorSubcategoryCreateView.as_view(), name='vendor-subcategory-create'),
     path('register/', views.VendorRegistrationView.as_view(), name='vendor-register'),
     path('list/', views.VendorListView.as_view(), name='vendor-list'),
     path('nearby/', views.NearbyVendorsView.as_view(), name='vendor-nearby'),

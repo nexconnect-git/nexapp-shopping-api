@@ -16,6 +16,10 @@ class Category(models.Model):
         related_name='children',
     )
     is_active = models.BooleanField(default=True)
+    show_in_customer_ui = models.BooleanField(
+        default=True,
+        help_text="Controls visibility in the customer app. Vendor-created categories default to False until admin approves.",
+    )
     display_order = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 

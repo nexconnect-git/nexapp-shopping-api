@@ -24,6 +24,7 @@ from vendors.views.admin_payouts import (
     AdminVendorPayoutScheduleView, AdminVendorPayoutSendPaymentView,
     AdminVendorPayoutForcePaidView,
 )
+from vendors.views.categories import VendorCategoryListCreateView, VendorSubcategoryCreateView
 
 __all__ = [
     'VendorRegistrationView',
@@ -57,4 +58,6 @@ __all__ = [
     'AdminVendorPayoutScheduleView',
     'AdminVendorPayoutSendPaymentView',
     'AdminVendorPayoutForcePaidView',
+    'VendorCategoryListCreateView',
+    'VendorSubcategoryCreateView',
 ]

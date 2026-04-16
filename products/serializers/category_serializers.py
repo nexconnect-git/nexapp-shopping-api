@@ -14,8 +14,8 @@ class CategorySerializer(serializers.ModelSerializer):
         model = Category
         fields = [
             "id", "name", "slug", "description", "image", "parent",
-            "parent_name", "is_active", "display_order", "children",
-            "subcategory_count", "created_at",
+            "parent_name", "is_active", "show_in_customer_ui", "display_order",
+            "children", "subcategory_count", "created_at",
         ]
         read_only_fields = ["id", "created_at"]
 
