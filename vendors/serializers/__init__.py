@@ -6,6 +6,7 @@ from .onboarding import (
 from .admin import AdminVendorSerializer, VendorFullOnboardSerializer
 from .reviews_audit import VendorAuditLogSerializer, VendorReviewSerializer
 from .payouts import VendorPayoutSerializer, DeliveryPartnerPayoutSerializer
+from .wallet import VendorWalletTransactionSerializer
 
 __all__ = [
     'VendorSerializer',
@@ -22,5 +23,6 @@ __all__ = [
     'VendorAuditLogSerializer',
     'VendorReviewSerializer',
     'VendorPayoutSerializer',
-    'DeliveryPartnerPayoutSerializer'
+    'DeliveryPartnerPayoutSerializer',
+    'VendorWalletTransactionSerializer',
 ]

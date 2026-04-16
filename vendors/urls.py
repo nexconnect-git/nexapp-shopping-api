@@ -16,6 +16,7 @@ urlpatterns = [
     path('list/', views.VendorListView.as_view(), name='vendor-list'),
     path('nearby/', views.NearbyVendorsView.as_view(), name='vendor-nearby'),
     path('dashboard/', views.VendorDashboardView.as_view(), name='vendor-dashboard'),
+    path('wallet/transactions/', views.VendorWalletTransactionListView.as_view(), name='vendor-wallet-transactions'),
     path('payouts/', views.VendorPayoutListView.as_view(), name='vendor-payout-list'),
     path('payouts/<uuid:pk>/approve/', views.VendorPayoutApproveView.as_view(), name='vendor-payout-approve'),
     path('payouts/<uuid:pk>/decline/', views.VendorPayoutDeclineView.as_view(), name='vendor-payout-decline'),

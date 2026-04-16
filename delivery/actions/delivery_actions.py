@@ -111,6 +111,18 @@ class ConfirmDeliveryAction:
 
         order.save(update_fields=update_fields)
 
+        # Credit Vendor Wallet for the completed sale
+        vendor = order.vendor
+        vendor_earnings = order.subtotal - order.coupon_discount
+        from vendors.actions.wallet_actions import VendorWalletAction
+        VendorWalletAction.credit_vendor(
+            vendor_id=str(vendor.id),
+            amount=vendor_earnings,
+            source='order_earning',
+            reference_id=str(order.id),
+            description=f"Earnings from Order #{order.order_number}"
+        )
+
         partner = user.delivery_profile
         base_qs = OrderRepository.get_base_queryset()
         has_active_orders = base_qs.filter(

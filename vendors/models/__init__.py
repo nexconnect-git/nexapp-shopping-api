@@ -7,6 +7,7 @@ from .vendor_holiday import VendorHoliday
 from .vendor_audit_log import VendorAuditLog, AUDIT_ACTION_CHOICES
 from .vendor_review import VendorReview
 from .vendor_payout import VendorPayout, DeliveryPartnerPayout, PAYOUT_STATUS_CHOICES
+from .vendor_wallet import VendorWalletTransaction
 
 __all__ = [
     'Vendor',
@@ -19,4 +20,5 @@ __all__ = [
     'VendorReview',
     'VendorPayout',
     'DeliveryPartnerPayout',
+    'VendorWalletTransaction',
 ]

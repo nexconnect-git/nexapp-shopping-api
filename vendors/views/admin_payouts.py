@@ -91,11 +91,28 @@ class AdminVendorPayoutSendPaymentView(APIView):
             return Response({"error": "Not found."}, status=status.HTTP_404_NOT_FOUND)
 
         transaction_ref = request.data.get("transaction_ref", "")
-        payout.status = "paid"
-        payout.transaction_ref = transaction_ref
-        payout.payment_sent_at = timezone.now()
-        payout.paid_at = timezone.now()
-        payout.save(update_fields=["status", "transaction_ref", "payment_sent_at", "paid_at"])
+        
+        # Only deduct wallet balance if the payout wasn't already Paid
+        if payout.status != "paid":
+            payout.status = "paid"
+            payout.transaction_ref = transaction_ref
+            payout.payment_sent_at = timezone.now()
+            payout.paid_at = timezone.now()
+            payout.save(update_fields=["status", "transaction_ref", "payment_sent_at", "paid_at"])
+            
+            # Debit Vendor Wallet
+            from vendors.actions.wallet_actions import VendorWalletAction
+            try:
+                VendorWalletAction.debit_vendor(
+                    vendor_id=str(payout.vendor.id),
+                    amount=payout.net_payout,
+                    source='payout_withdrawal',
+                    reference_id=str(payout.id),
+                    description=f"Withdrawal for Payout to {payout.vendor.store_name}"
+                )
+            except ValueError:
+                pass # Already handled or balance too low
+
         return Response(VendorPayoutSerializer(payout).data)
 
 

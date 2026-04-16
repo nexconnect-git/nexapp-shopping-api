@@ -307,8 +307,15 @@ class AdminUpdateOrderStatusAction(BaseAction):
             with transaction.atomic():
                 vendor = order.vendor
                 vendor_earnings = order.subtotal - order.coupon_discount
-                vendor.wallet_balance += vendor_earnings
-                vendor.save(update_fields=["wallet_balance", "updated_at"])
+                
+                from vendors.actions.wallet_actions import VendorWalletAction
+                VendorWalletAction.credit_vendor(
+                    vendor_id=str(vendor.id),
+                    amount=vendor_earnings,
+                    source='order_earning',
+                    reference_id=str(order.id),
+                    description=f"Earnings from Order #{order.order_number}"
+                )
 
                 if order.delivery_partner:
                     from delivery.models import DeliveryPartner
