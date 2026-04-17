@@ -17,7 +17,8 @@ from vendors.views.admin import (
 )
 from vendors.views.payouts_and_misc import (
     VendorPayoutListView, VendorPayoutApproveView, VendorPayoutDeclineView,
-    VendorPayoutVerifyCreditView, VendorCouponViewSet, VendorReviewViewSet
+    VendorPayoutVerifyCreditView, VendorCouponViewSet, VendorReviewViewSet,
+    VendorWalletTransactionListView,
 )
 from vendors.views.admin_payouts import (
     AdminVendorPayoutListView, AdminVendorPayoutDetailView,
@@ -60,4 +61,5 @@ __all__ = [
     'AdminVendorPayoutForcePaidView',
     'VendorCategoryListCreateView',
     'VendorSubcategoryCreateView',
+    'VendorWalletTransactionListView',
 ]
