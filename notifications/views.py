@@ -181,7 +181,7 @@ class AdminNotificationListView(APIView):
                 | Q(user__username__icontains=search)
             )
 
-        notification_type = request.query_params.get("type")
+        notification_type = request.query_params.get("notification_type") or request.query_params.get("type")
         if notification_type:
             qs = qs.filter(notification_type=notification_type)
 
