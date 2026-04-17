@@ -239,8 +239,9 @@ class AdminSendNotificationView(APIView):
                 status=status.HTTP_201_CREATED,
             )
 
-        # Broadcast to all users
-        all_users = User.objects.all()
+        # Broadcast — optionally filtered by role
+        role = data.get("role")
+        qs = User.objects.filter(role=role) if role else User.objects.all()
         notifications = [
             Notification(
                 user=user,
@@ -248,7 +249,7 @@ class AdminSendNotificationView(APIView):
                 message=data["message"],
                 notification_type=data["notification_type"],
             )
-            for user in all_users
+            for user in qs
         ]
         Notification.objects.bulk_create(notifications)
         return Response(

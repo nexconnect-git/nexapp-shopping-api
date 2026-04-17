@@ -22,7 +22,12 @@ class AdminNotificationSerializer(serializers.ModelSerializer):
 
 
 class SendNotificationSerializer(serializers.Serializer):
-    user_id = serializers.IntegerField(required=False, help_text='Omit to broadcast to all users')
+    user_id = serializers.IntegerField(required=False, help_text='Omit to broadcast')
+    role = serializers.ChoiceField(
+        choices=['customer', 'vendor', 'delivery', 'admin'],
+        required=False,
+        help_text='Filter broadcast by role. Ignored when user_id is set.',
+    )
     title = serializers.CharField(max_length=200)
     message = serializers.CharField()
     notification_type = serializers.ChoiceField(
