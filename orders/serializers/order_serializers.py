@@ -49,7 +49,7 @@ class OrderSerializer(serializers.ModelSerializer):
             "coupon_discount", "wallet_discount", "total",
             "notes", "pickup_otp", "delivery_otp", "delivery_photo",
             "estimated_delivery_time", "actual_delivery_time",
-            "delivery_latitude", "delivery_longitude",
+            "delivery_latitude", "delivery_longitude", "delivery_tip",
             "vendor_payout", "delivery_payout",
             "is_payment_verified", "razorpay_refund_id", "refund_status",
             "scheduled_for",

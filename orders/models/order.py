@@ -66,6 +66,7 @@ class Order(models.Model):
     actual_delivery_time = models.DateTimeField(null=True, blank=True)
     delivery_latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     delivery_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    delivery_tip = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     placed_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

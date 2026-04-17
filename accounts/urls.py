@@ -23,6 +23,9 @@ urlpatterns = [
     path('wallet/verify-topup/', views.VerifyWalletTopUpView.as_view(), name='wallet-verify-topup'),
     path('loyalty/', views.LoyaltyView.as_view(), name='loyalty'),
     path('loyalty/preview/', views.LoyaltyPreviewView.as_view(), name='loyalty-preview'),
+    path('referral/', views.MyReferralView.as_view(), name='referral'),
+    path('referral/apply/', views.ApplyReferralCodeView.as_view(), name='referral-apply'),
+    path('referral/lookup/', views.ReferralCodeLookupView.as_view(), name='referral-lookup'),
     path('setup/', views.SetupSuperUserView.as_view(), name='setup'),
     path('', include(router.urls)),
 ]

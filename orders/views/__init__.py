@@ -3,6 +3,7 @@ from orders.views.payment_views import CreateRazorpayOrderView, VerifyRazorpayPa
 from orders.views.order_views import (
     CreateOrderView, OrderListView, OrderDetailView, CancelOrderView,
     OrderTrackingView, OrderPaymentQRView, SubmitOrderRatingView,
+    TipDeliveryPartnerView,
     DeliveryFeePreviewView, CancellationPolicyView, ReorderView,
 )
 from orders.views.coupon_views import ValidateCouponView, CustomerCouponListView, AdminCouponViewSet
@@ -15,6 +16,7 @@ __all__ = [
     'CreateRazorpayOrderView', 'VerifyRazorpayPaymentView', 'RazorpayWebhookView', 'InitiateCheckoutPaymentView',
     'CreateOrderView', 'OrderListView', 'OrderDetailView', 'CancelOrderView',
     'OrderTrackingView', 'OrderPaymentQRView', 'SubmitOrderRatingView',
+    'TipDeliveryPartnerView',
     'DeliveryFeePreviewView', 'CancellationPolicyView', 'ReorderView',
     'ValidateCouponView', 'CustomerCouponListView', 'AdminCouponViewSet',
     'CustomerOrderIssueListCreateView', 'CustomerOrderIssueDetailView', 'IssueMessageCreateView',

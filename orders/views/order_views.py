@@ -184,6 +184,36 @@ class SubmitOrderRatingView(APIView):
         return Response({"id": str(rating.id), "rating": rating.rating}, status=status.HTTP_201_CREATED)
 
 
+class TipDeliveryPartnerView(APIView):
+    """POST /api/orders/<pk>/tip/ — add a tip to a delivered order."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        try:
+            order = Order.objects.get(id=pk, customer=request.user)
+        except Order.DoesNotExist:
+            return Response({"error": "Order not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if order.status != "delivered":
+            return Response({"error": "You can only tip on delivered orders."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not order.delivery_partner:
+            return Response({"error": "No delivery partner assigned."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            amount = Decimal(str(request.data.get("amount", 0)))
+        except Exception:
+            return Response({"error": "Invalid tip amount."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if amount <= 0:
+            return Response({"error": "Tip amount must be positive."}, status=status.HTTP_400_BAD_REQUEST)
+
+        order.delivery_tip = amount
+        order.save(update_fields=["delivery_tip", "updated_at"])
+        return Response({"delivery_tip": str(order.delivery_tip)})
+
+
 class CancellationPolicyView(APIView):
     """GET /api/orders/cancellation-policy/
 

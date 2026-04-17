@@ -27,6 +27,7 @@ urlpatterns = [
     path('<uuid:pk>/create-payment/', views.CreateRazorpayOrderView.as_view(), name='order-create-payment'),
     path('<uuid:pk>/verify-payment/', views.VerifyRazorpayPaymentView.as_view(), name='order-verify-payment'),
     path('<uuid:pk>/rate/', views.SubmitOrderRatingView.as_view(), name='order-rate'),
+    path('<uuid:pk>/tip/', views.TipDeliveryPartnerView.as_view(), name='order-tip'),
     path('<uuid:pk>/reorder/', views.ReorderView.as_view(), name='order-reorder'),
     # Order Issues
     path('issues/', views.CustomerOrderIssueListCreateView.as_view(), name='issue-list'),

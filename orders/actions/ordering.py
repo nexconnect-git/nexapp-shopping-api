@@ -227,6 +227,31 @@ class CreateOrdersFromCartAction(BaseAction):
                 description=f"Redeemed {loyalty_points} pts for order(s) {order_refs}",
             )
 
+        # Award referral bonus to referrer on first order
+        try:
+            from accounts.models.referral import Referral, REFERRAL_BONUS_POINTS
+            referral = Referral.objects.filter(referee=user, bonus_awarded=False).select_related('referrer').first()
+            if referral and not Order.objects.filter(customer=user).exclude(pk__in=[o.pk for o in created_orders]).exists():
+                EarnLoyaltyPointsAction.execute(
+                    user=referral.referrer,
+                    order_total=0,
+                    reference_id=str(created_orders[0].pk),
+                    description=f"Referral bonus: {user.username} placed their first order",
+                )
+                # Override the auto-calculated 0-total points with the flat bonus
+                from accounts.models.loyalty import LoyaltyAccount, LoyaltyTransaction
+                acct = LoyaltyAccount.objects.get_or_create(user=referral.referrer)[0]
+                acct.points = acct.points - 1 + REFERRAL_BONUS_POINTS  # replace the 1-pt min from execute()
+                acct.lifetime_points = acct.lifetime_points - 1 + REFERRAL_BONUS_POINTS
+                acct.save(update_fields=['points', 'lifetime_points', 'updated_at'])
+                LoyaltyTransaction.objects.filter(
+                    account=acct, reference_id=str(created_orders[0].pk), points=1
+                ).update(points=REFERRAL_BONUS_POINTS, description=f"Referral bonus: {user.username}'s first order")
+                referral.bonus_awarded = True
+                referral.save(update_fields=['bonus_awarded'])
+        except Exception:
+            pass  # Never let referral logic break order placement
+
         for order in created_orders:
             order_placed.send(sender=Order, order=order)
 
