@@ -9,7 +9,7 @@ from rest_framework.renderers import JSONRenderer
 
 from accounts.models import Address
 from accounts.actions.wallet_actions import DebitWalletAction, CreditWalletAction
-from accounts.actions.loyalty_actions import EarnLoyaltyPointsAction
+from accounts.actions.loyalty_actions import EarnLoyaltyPointsAction, RedeemLoyaltyPointsAction, RUPEE_VALUE_PER_POINT, MAX_POINTS_REDEMPTION_PCT
 from backend.events import order_cancelled, order_placed, order_status_updated, issue_message_added
 from backend.utils import haversine
 from orders.models import (
@@ -24,7 +24,7 @@ from .base import BaseAction
 
 class CreateOrdersFromCartAction(BaseAction):
     @transaction.atomic
-    def execute(self, user, delivery_address_id, payment_method="cod", notes="", coupon_code="", wallet_amount: Decimal = Decimal("0"), scheduled_for=None) -> List[Order]:
+    def execute(self, user, delivery_address_id, payment_method="cod", notes="", coupon_code="", wallet_amount: Decimal = Decimal("0"), loyalty_points: int = 0, scheduled_for=None) -> List[Order]:
         try:
             delivery_address = Address.objects.get(pk=delivery_address_id, user=user)
         except Address.DoesNotExist:
@@ -102,6 +102,28 @@ class CreateOrdersFromCartAction(BaseAction):
                     f"Insufficient wallet balance. Available: ₹{wallet_balance}, Requested: ₹{wallet_amount}"
                 )
 
+        # Validate loyalty points redemption
+        loyalty_points = max(0, int(loyalty_points))
+        loyalty_discount = Decimal("0")
+        if loyalty_points > 0:
+            from accounts.models.loyalty import LoyaltyAccount
+            try:
+                loyalty_account = LoyaltyAccount.objects.get(user=user)
+            except LoyaltyAccount.DoesNotExist:
+                loyalty_account = None
+            available_points = loyalty_account.points if loyalty_account else 0
+            if loyalty_points > available_points:
+                raise ValueError(
+                    f"Insufficient loyalty points. Available: {available_points}, Requested: {loyalty_points}"
+                )
+            max_discount = (cart_total * MAX_POINTS_REDEMPTION_PCT / 100).quantize(Decimal("0.01"))
+            loyalty_discount = min(
+                Decimal(str(loyalty_points)) * RUPEE_VALUE_PER_POINT,
+                max_discount,
+            ).quantize(Decimal("0.01"))
+            # Recalculate actual points to redeem based on capped discount
+            loyalty_points = int(loyalty_discount / RUPEE_VALUE_PER_POINT)
+
         # Pre-check stock for all items before creating any orders
         for item in cart_items:
             if item.product.stock < item.quantity:
@@ -147,7 +169,11 @@ class CreateOrdersFromCartAction(BaseAction):
                 (subtotal / cart_total * wallet_amount).quantize(Decimal("0.01"))
                 if cart_total and wallet_amount > Decimal("0") else Decimal("0")
             )
-            total = max(pre_wallet_total - vendor_wallet_share, Decimal("0"))
+            vendor_loyalty_share = (
+                (subtotal / cart_total * loyalty_discount).quantize(Decimal("0.01"))
+                if cart_total and loyalty_discount > Decimal("0") else Decimal("0")
+            )
+            total = max(pre_wallet_total - vendor_wallet_share - vendor_loyalty_share, Decimal("0"))
 
             order = Order.objects.create(
                 customer=user, vendor=vendor, delivery_address=delivery_address,
@@ -189,6 +215,16 @@ class CreateOrdersFromCartAction(BaseAction):
                 source='order_payment',
                 reference_id=str(created_orders[0].pk),
                 description=f"Wallet payment for order(s) {order_refs}",
+            )
+
+        # Redeem loyalty points once for the full redemption
+        if loyalty_points > 0 and created_orders:
+            order_refs = ", ".join(o.order_number for o in created_orders)
+            RedeemLoyaltyPointsAction.execute(
+                user=user,
+                points_to_redeem=loyalty_points,
+                reference_id=str(created_orders[0].pk),
+                description=f"Redeemed {loyalty_points} pts for order(s) {order_refs}",
             )
 
         for order in created_orders:

@@ -6,6 +6,9 @@ review_router = DefaultRouter()
 review_router.register(r'reviews', views.ProductReviewViewSet, basename='product-review')
 
 urlpatterns = [
+    path('wishlist/', views.WishlistView.as_view(), name='wishlist'),
+    path('wishlist/status/', views.WishlistStatusView.as_view(), name='wishlist-status'),
+    path('wishlist/<uuid:pk>/toggle/', views.WishlistToggleView.as_view(), name='wishlist-toggle'),
     path('categories/', views.CategoryListView.as_view(), name='category-list'),
     path('list/', views.ProductListView.as_view(), name='product-list'),
     path('featured/', views.FeaturedProductsView.as_view(), name='featured-products'),

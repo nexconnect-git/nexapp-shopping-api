@@ -9,6 +9,7 @@ from .admin_views import (
     AdminCategoryListCreateView, AdminCategoryDetailView,
     AdminProductListCreateView, AdminProductDetailView, AdminProductViewSet
 )
+from .wishlist_views import WishlistView, WishlistToggleView, WishlistStatusView
 
 __all__ = [
     'CategoryListView',
@@ -25,4 +26,7 @@ __all__ = [
     'AdminCategoryDetailView',
     'AdminProductListCreateView',
     'AdminProductDetailView',
+    'WishlistView',
+    'WishlistToggleView',
+    'WishlistStatusView',
 ]

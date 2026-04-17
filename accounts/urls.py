@@ -22,6 +22,7 @@ urlpatterns = [
     path('wallet/topup/', views.InitiateWalletTopUpView.as_view(), name='wallet-topup'),
     path('wallet/verify-topup/', views.VerifyWalletTopUpView.as_view(), name='wallet-verify-topup'),
     path('loyalty/', views.LoyaltyView.as_view(), name='loyalty'),
+    path('loyalty/preview/', views.LoyaltyPreviewView.as_view(), name='loyalty-preview'),
     path('setup/', views.SetupSuperUserView.as_view(), name='setup'),
     path('', include(router.urls)),
 ]

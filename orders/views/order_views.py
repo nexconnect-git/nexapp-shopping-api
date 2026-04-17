@@ -37,6 +37,7 @@ class CreateOrderView(APIView):
                 notes=vd.get("notes", ""),
                 coupon_code=vd.get("coupon_code", "").strip().upper(),
                 wallet_amount=vd.get("wallet_amount", Decimal("0")),
+                loyalty_points=vd.get("loyalty_points", 0),
                 scheduled_for=vd.get("scheduled_for"),
             )
         except ValueError as exc:

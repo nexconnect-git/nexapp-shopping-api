@@ -177,6 +177,7 @@ class CreateOrderSerializer(serializers.Serializer):
     notes = serializers.CharField(required=False, default="", allow_blank=True)
     coupon_code = serializers.CharField(required=False, allow_blank=True, default="")
     wallet_amount = serializers.DecimalField(required=False, default=0, max_digits=12, decimal_places=2, min_value=0)
+    loyalty_points = serializers.IntegerField(required=False, default=0, min_value=0)
     scheduled_for = serializers.DateTimeField(required=False, allow_null=True, default=None)
     # Optional: pre-verified Razorpay payment proof (from the new initiate-first flow)
     razorpay_order_id = serializers.CharField(required=False, allow_blank=True, default="")
