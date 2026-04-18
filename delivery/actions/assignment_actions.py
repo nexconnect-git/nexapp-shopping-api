@@ -7,6 +7,7 @@ from backend.events import order_status_updated
 from delivery.data.assignment_repo import DeliveryAssignmentRepository
 from orders.data.order_repo import OrderRepository
 from delivery.tasks import search_and_notify_partners, _expand_and_retry
+from notifications.fcm import send_push
 from notifications.models import Notification
 from helpers.geo_helpers import calculate_eta_minutes
 
@@ -71,7 +72,33 @@ class AcceptAssignmentAction:
             latitude=partner.current_latitude,
             longitude=partner.current_longitude,
         )
-        # We only fire order_status_updated if we actually change the status, which we do not here.
+        # Notify customer and vendor that a driver accepted
+        partner_name = user.get_full_name() or user.username
+        driver_data = {"order_id": str(order.id), "order_number": order.order_number, "type": "driver_assigned"}
+        for recipient, title, body in [
+            (
+                order.customer,
+                "Driver Assigned",
+                f"{partner_name} is heading to pick up your order #{order.order_number}.",
+            ),
+            (
+                order.vendor.user,
+                "Driver Accepted",
+                f"{partner_name} accepted the delivery for order #{order.order_number}.",
+            ),
+        ]:
+            Notification.objects.create(
+                user=recipient,
+                title=title,
+                message=body,
+                notification_type="delivery",
+                data=driver_data,
+            )
+            try:
+                send_push(recipient.pk, title=title, body=body, data=driver_data)
+            except Exception:
+                pass
+
         return order
 
 

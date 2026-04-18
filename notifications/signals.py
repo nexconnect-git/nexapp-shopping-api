@@ -58,7 +58,15 @@ def notify_order_cancelled(sender, order, **kwargs):
 
 @receiver(order_status_updated)
 def notify_order_status(sender, order, new_status, old_status, **kwargs):
-    if new_status == "on_the_way":
+    if new_status == "picked_up":
+        _create_and_push(
+            user=order.customer,
+            title="Order Picked Up",
+            message=f"Your order #{order.order_number} has been picked up and is on its way!",
+            notification_type="delivery",
+            data={"order_id": str(order.id), "order_number": order.order_number},
+        )
+    elif new_status == "on_the_way":
         _create_and_push(
             user=order.customer,
             title="Order On the Way",

@@ -14,6 +14,7 @@ from django.utils import timezone
 
 from backend.utils import haversine
 from delivery.models import DeliveryAssignment, DeliveryPartner
+from notifications.fcm import send_push
 from notifications.models import Notification
 
 logger = logging.getLogger(__name__)
@@ -110,21 +111,28 @@ def search_and_notify_partners(assignment_id: str) -> None:
     if nearby_partners:
         for partner in nearby_partners:
             assignment.notified_partners.add(partner)
+            title = "New Delivery Request"
+            message = (
+                f"Order #{order.order_number} needs pickup near you "
+                f"(within {assignment.current_radius_km:.0f} km)."
+            )
+            data = {
+                "order_id": str(order.id),
+                "order_number": order.order_number,
+                "assignment_id": str(assignment.id),
+                "type": "assignment_request",
+            }
             Notification.objects.create(
                 user=partner.user,
-                title="New Delivery Request",
-                message=(
-                    f"Order #{order.order_number} needs pickup near you "
-                    f"(within {assignment.current_radius_km:.0f} km)."
-                ),
+                title=title,
+                message=message,
                 notification_type="delivery",
-                data={
-                    "order_id": str(order.id),
-                    "order_number": order.order_number,
-                    "assignment_id": str(assignment.id),
-                    "type": "assignment_request",
-                },
+                data=data,
             )
+            try:
+                send_push(partner.user.pk, title=title, body=message, data=data)
+            except Exception:
+                logger.warning("FCM push failed for partner %s", partner.user.pk)
         assignment.status = "notified"
         assignment.last_search_at = timezone.now()
         assignment.save(update_fields=["status", "last_search_at", "updated_at"])
