@@ -17,6 +17,7 @@ class Address(models.Model):
     phone = models.CharField(max_length=15)
     address_line1 = models.CharField(max_length=255)
     address_line2 = models.CharField(max_length=255, blank=True)
+    landmark = models.CharField(max_length=255, blank=True)
     city = models.CharField(max_length=100)
     state = models.CharField(max_length=100)
     postal_code = models.CharField(max_length=10)

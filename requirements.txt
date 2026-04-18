@@ -44,3 +44,4 @@ requests==2.32.3
 
 # razorpay SDK uses pkg_resources; pin setuptools to a version that still ships it
 setuptools<70
+django-redis==6.0.0

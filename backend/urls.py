@@ -14,6 +14,9 @@ urlpatterns = [
     path('health/', health_check),
     path('admin/', admin.site.urls),
 
+    # v1 API
+    path('api/v1/', include('api_v1.urls')),
+
     # Auth & core apps
     path('api/auth/', include('accounts.urls')),
     path('api/vendors/', include('vendors.urls')),

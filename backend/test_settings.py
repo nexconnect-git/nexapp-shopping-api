@@ -41,3 +41,10 @@ SILENCED_SYSTEM_CHECKS = ["urls.W005", "urls.E007", "urls.W001"]
 
 # Skip URL traversal during system checks (avoids importing optional packages).
 ROOT_URLCONF = "backend.test_urls"
+
+# Use in-memory dummy cache so tests don't require a live Redis server.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.dummy.DummyCache",
+    }
+}

@@ -14,8 +14,11 @@ class VendorSerializer(serializers.ModelSerializer):
             "phone", "email", "address", "city", "state", "postal_code",
             "latitude", "longitude",
             "vendor_type", "vendor_tier",
-            "status", "is_open", "opening_time", "closing_time",
+            "status", "is_open", "opening_time", "closing_time", "is_accepting_orders",
+            "operating_hours",
             "min_order_amount", "delivery_radius_km",
+            "instant_delivery_radius_km", "max_delivery_radius_km",
+            "base_prep_time_min", "delivery_time_per_km_min", "scheduled_buffer_min",
             "fulfillment_type", "dispatch_sla_hours", "return_policy",
             "packaging_preferences", "auto_order_acceptance", "cancellation_rules",
             "average_rating", "total_ratings", "is_featured",
@@ -45,9 +48,12 @@ class VendorListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Vendor
         fields = [
-            "id", "store_name", "logo", "city", "state", "is_open",
+            "id", "store_name", "logo", "city", "state", "is_open", "is_accepting_orders",
             "average_rating", "total_ratings", "delivery_radius_km",
+            "instant_delivery_radius_km", "max_delivery_radius_km",
+            "base_prep_time_min", "delivery_time_per_km_min", "scheduled_buffer_min",
             "min_order_amount", "is_featured", "vendor_type", "vendor_tier",
+            "latitude", "longitude",
         ]
 
 class VendorRegistrationSerializer(serializers.Serializer):

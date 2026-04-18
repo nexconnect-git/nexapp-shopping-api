@@ -64,8 +64,17 @@ class Vendor(models.Model):
     closing_time  = models.TimeField(default='22:00')
 
     # ── Delivery settings ─────────────────────────────────────────────────────
-    min_order_amount    = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    delivery_radius_km  = models.DecimalField(max_digits=5,  decimal_places=2, default=5.0)
+    min_order_amount           = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    delivery_radius_km         = models.DecimalField(max_digits=5,  decimal_places=2, default=5.0)
+
+    # ── Delivery quote engine ─────────────────────────────────────────────────
+    instant_delivery_radius_km = models.DecimalField(max_digits=5,  decimal_places=2, default=2.5)
+    max_delivery_radius_km     = models.DecimalField(max_digits=5,  decimal_places=2, default=5.0)
+    base_prep_time_min         = models.IntegerField(default=15)
+    delivery_time_per_km_min   = models.DecimalField(max_digits=4,  decimal_places=2, default=3.0)
+    scheduled_buffer_min       = models.IntegerField(default=30)
+    is_accepting_orders        = models.BooleanField(default=True)
+    operating_hours            = models.JSONField(default=dict, blank=True)
 
     # ── Fulfillment ───────────────────────────────────────────────────────────
     fulfillment_type         = models.CharField(max_length=20, choices=FULFILLMENT_TYPE_CHOICES, default='vendor', blank=True)
