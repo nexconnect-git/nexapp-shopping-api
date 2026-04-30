@@ -26,6 +26,20 @@ def _import_firebase():
     return _firebase_admin if _firebase_admin else None
 
 
+def _import_firebase_messaging():
+    """Lazy import of firebase_admin.messaging."""
+    firebase_admin = _import_firebase()
+    if firebase_admin is None:
+        return None
+
+    try:
+        from firebase_admin import messaging
+        return messaging
+    except ImportError:
+        logger.warning("firebase_admin.messaging not available â€” FCM disabled.")
+        return None
+
+
 def _get_firebase_app():
     """Return the initialized Firebase app, initializing it lazily on first call."""
     global _firebase_app
@@ -76,7 +90,8 @@ class FCMService:
             True if at least one message was sent successfully, False otherwise.
         """
         app = _get_firebase_app()
-        if app is None:
+        messaging = _import_firebase_messaging()
+        if app is None or messaging is None:
             return False
 
         tokens = DeviceTokenRepository.get_tokens_for_user(user_id)

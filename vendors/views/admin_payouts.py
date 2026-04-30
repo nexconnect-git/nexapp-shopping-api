@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsAdminRole
+from accounts.actions.audit_actions import CreateAdminAuditLogAction
 from vendors.models import VendorPayout
 from vendors.serializers import VendorPayoutSerializer
 
@@ -62,6 +63,14 @@ class AdminVendorPayoutDetailView(APIView):
         serializer = VendorPayoutSerializer(payout, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
+        CreateAdminAuditLogAction().execute(
+            request=request,
+            action='payout',
+            entity_type='vendor_payout',
+            entity_id=str(payout.id),
+            summary=f"Updated vendor payout {payout.id}.",
+            metadata=request.data,
+        )
         return Response(serializer.data)
 
 
@@ -77,6 +86,14 @@ class AdminVendorPayoutScheduleView(APIView):
 
         payout.status = "scheduled"
         payout.save(update_fields=["status"])
+        CreateAdminAuditLogAction().execute(
+            request=request,
+            action='payout',
+            entity_type='vendor_payout',
+            entity_id=str(payout.id),
+            summary=f"Scheduled vendor payout {payout.id}.",
+            metadata={'status': 'scheduled'},
+        )
         return Response(VendorPayoutSerializer(payout).data)
 
 
@@ -113,6 +130,14 @@ class AdminVendorPayoutSendPaymentView(APIView):
             except ValueError:
                 pass # Already handled or balance too low
 
+        CreateAdminAuditLogAction().execute(
+            request=request,
+            action='payout',
+            entity_type='vendor_payout',
+            entity_id=str(payout.id),
+            summary=f"Marked vendor payout {payout.id} as paid.",
+            metadata={'status': payout.status, 'transaction_ref': transaction_ref},
+        )
         return Response(VendorPayoutSerializer(payout).data)
 
 
@@ -129,4 +154,12 @@ class AdminVendorPayoutForcePaidView(APIView):
         payout.status = "verified"
         payout.vendor_verified_at = timezone.now()
         payout.save(update_fields=["status", "vendor_verified_at"])
+        CreateAdminAuditLogAction().execute(
+            request=request,
+            action='payout',
+            entity_type='vendor_payout',
+            entity_id=str(payout.id),
+            summary=f"Force-verified vendor payout {payout.id}.",
+            metadata={'status': 'verified'},
+        )
         return Response(VendorPayoutSerializer(payout).data)

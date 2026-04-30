@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsAdminRole
+from accounts.actions.audit_actions import CreateAdminAuditLogAction
 from orders.actions.ordering import AdminUpdateOrderStatusAction
 from orders.data.order_repo import OrderRepository
 from orders.data.issue_repo import IssueRepository
@@ -61,6 +62,14 @@ class AdminOrderDetailView(APIView):
         action = AdminUpdateOrderStatusAction()
         try:
             order = action.execute(str(pk), new_status, request.user)
+            CreateAdminAuditLogAction().execute(
+                request=request,
+                action='status_change',
+                entity_type='order',
+                entity_id=str(order.id),
+                summary=f"Updated order #{order.order_number} to {new_status}.",
+                metadata={'status': new_status},
+            )
             return Response(OrderSerializer(order).data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -107,6 +116,14 @@ class AdminOrderIssueDetailView(APIView):
             issue.resolved_at = timezone.now()
 
         issue.save()
+        CreateAdminAuditLogAction().execute(
+            request=request,
+            action='update',
+            entity_type='order_issue',
+            entity_id=str(issue.id),
+            summary=f"Updated order issue {issue.id}.",
+            metadata={field: request.data[field] for field in ["status", "admin_notes", "refund_amount", "refund_method"] if field in request.data},
+        )
         return Response(OrderIssueSerializer(issue).data)
 
 class AdminPaymentsView(generics.ListAPIView):
@@ -170,4 +187,12 @@ class AdminPlatformSettingView(APIView):
                 updated.append(field)
         if updated:
             setting.save(update_fields=updated)
+            CreateAdminAuditLogAction().execute(
+                request=request,
+                action='settings',
+                entity_type='platform_setting',
+                entity_id=str(setting.id),
+                summary=f"Updated platform settings: {', '.join(updated)}.",
+                metadata={'updated_fields': updated},
+            )
         return Response({f: getattr(setting, f) for f in _PLATFORM_SETTING_FIELDS})

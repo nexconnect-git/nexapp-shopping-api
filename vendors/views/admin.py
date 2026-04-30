@@ -62,7 +62,7 @@ class AdminVendorDetailView(APIView):
         if not vendor:
             return Response({"error": "Vendor not found."}, status=status.HTTP_404_NOT_FOUND)
             
-        serializer = AdminVendorSerializer(vendor, data=request.data, partial=True)
+        serializer = AdminVendorSerializer(vendor, data=request.data, partial=True, context={'request': request})
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)

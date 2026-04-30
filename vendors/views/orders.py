@@ -11,6 +11,11 @@ from vendors.actions import (
     VerifyPickupOtpAction,
     StartDeliverySearchAction,
     CancelDeliverySearchAction,
+    AcceptOrderAction,
+    RejectOrderAction,
+    StartPreparingOrderAction,
+    MarkOrderReadyAction,
+    VendorLiveOrdersAction,
 )
 from vendors.views.public import StandardPagination
 from orders.serializers import OrderSerializer
@@ -26,6 +31,14 @@ class VendorOrdersView(generics.ListAPIView):
             vendor=self.request.user.vendor_profile,
             status_filter=self.request.query_params.get("status")
         )
+
+
+class VendorLiveOrdersView(APIView):
+    permission_classes = [IsAuthenticated, IsApprovedVendor]
+
+    def get(self, request):
+        orders = VendorLiveOrdersAction().execute(request.user.vendor_profile)
+        return Response(OrderSerializer(orders, many=True).data)
 
 
 class VendorOrderDetailView(generics.RetrieveAPIView):
@@ -58,6 +71,40 @@ class VendorUpdateOrderStatusView(APIView):
             return Response(OrderSerializer(updated_order).data)
         except ValueError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class VendorOrderActionView(APIView):
+    permission_classes = [IsAuthenticated, IsApprovedVendor]
+    action_class = None
+
+    def post(self, request, pk):
+        order = VendorOrderRepository().get_order_for_vendor(pk=pk, vendor=request.user.vendor_profile)
+        if not order:
+            return Response({"error": "Order not found."}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            if self.action_class is RejectOrderAction:
+                updated_order = self.action_class().execute(order, request.data.get("reason", ""))
+            else:
+                updated_order = self.action_class().execute(order)
+            return Response(OrderSerializer(updated_order).data)
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class VendorAcceptOrderView(VendorOrderActionView):
+    action_class = AcceptOrderAction
+
+
+class VendorRejectOrderView(VendorOrderActionView):
+    action_class = RejectOrderAction
+
+
+class VendorStartPreparingOrderView(VendorOrderActionView):
+    action_class = StartPreparingOrderAction
+
+
+class VendorMarkOrderReadyView(VendorOrderActionView):
+    action_class = MarkOrderReadyAction
 
 
 class VendorVerifyPickupOtpView(APIView):

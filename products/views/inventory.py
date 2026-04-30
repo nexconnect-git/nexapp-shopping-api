@@ -9,6 +9,8 @@ from products.serializers.image_serializers import ProductImageSerializer
 from products.data.product_repository import ProductRepository
 from products.data.image_repository import ProductImageRepository
 from products.actions.inventory import AddProductImageAction, UpdateStockAction
+from products.actions.approval import ProductApprovalPolicy
+from products.models import Product
 
 class ProductListView(generics.ListAPIView):
     permission_classes = [AllowAny]
@@ -70,7 +72,16 @@ class VendorProductImageDetailView(APIView):
     def delete(self, request, pk, img_pk):
         img = ProductImageRepository.get_by_id(img_pk)
         if img and str(img.product_id) == str(pk) and img.product.vendor_id == request.user.vendor_profile.id:
+            product = img.product
             ProductImageRepository.delete(img)
+            if product.approval_status in {
+                Product.APPROVAL_STATUS_APPROVED,
+                Product.APPROVAL_STATUS_REJECTED,
+                Product.APPROVAL_STATUS_PENDING,
+            }:
+                update_fields = ProductApprovalPolicy.mark_requires_review(product, ["images"])
+                update_fields.append("updated_at")
+                product.save(update_fields=sorted(set(update_fields)))
             return Response(status=status.HTTP_204_NO_CONTENT)
         return Response(status=status.HTTP_404_NOT_FOUND)
 

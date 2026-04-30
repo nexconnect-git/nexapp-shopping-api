@@ -11,14 +11,28 @@ from rest_framework.permissions import IsAuthenticated
 from accounts.permissions import IsAdminRole
 
 import django_rq
-from rq_scheduler import Scheduler
-from rq.job import Job
-from rq.registry import StartedJobRegistry, FinishedJobRegistry, FailedJobRegistry, DeferredJobRegistry
+
+try:
+    from rq_scheduler import Scheduler
+except ModuleNotFoundError:
+    Scheduler = None
+
+try:
+    from rq.job import Job
+    from rq.registry import StartedJobRegistry, FinishedJobRegistry, FailedJobRegistry, DeferredJobRegistry
+except (ImportError, ModuleNotFoundError):
+    Job = None
+    StartedJobRegistry = None
+    FinishedJobRegistry = None
+    FailedJobRegistry = None
+    DeferredJobRegistry = None
 
 logger = logging.getLogger(__name__)
 
 
-def get_scheduler() -> Scheduler:
+def get_scheduler():
+    if Scheduler is None:
+        raise RuntimeError('rq_scheduler is not installed. Install it to manage scheduled jobs.')
     queue = django_rq.get_queue('default')
     return Scheduler(queue=queue, connection=queue.connection)
 
@@ -119,6 +133,9 @@ class AdminScheduledTaskListCreateView(APIView):
             # Add jobs sitting in the queue
             job_ids.update(queue.job_ids)
             
+            if Job is None:
+                raise RuntimeError('rq is not installed. Install it to inspect queue jobs.')
+
             # Add jobs from registries
             job_ids.update(StartedJobRegistry(queue=queue).get_job_ids())
             job_ids.update(FinishedJobRegistry(queue=queue).get_job_ids())
@@ -231,7 +248,8 @@ class AdminScheduledTaskCancelView(APIView):
 
     def delete(self, request, job_id):
         try:
-            from rq.job import Job
+            if Job is None:
+                raise RuntimeError('rq is not installed. Install it to cancel queue jobs.')
             queue = django_rq.get_queue('default')
             try:
                 job = Job.fetch(job_id, connection=queue.connection)

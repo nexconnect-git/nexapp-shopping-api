@@ -9,6 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.actions.audit_actions import CreateAdminAuditLogAction
 from accounts.permissions import IsAdminRole
 from vendors.models import DeliveryPartnerPayout
 from vendors.serializers import DeliveryPartnerPayoutSerializer
@@ -151,6 +152,14 @@ class AdminDeliveryPayoutDetailView(APIView):
         serializer = DeliveryPartnerPayoutSerializer(payout, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
+        CreateAdminAuditLogAction().execute(
+            request=request,
+            action='payout',
+            entity_type='delivery_payout',
+            entity_id=str(payout.id),
+            summary=f"Updated delivery payout {payout.id}.",
+            metadata=request.data,
+        )
         return Response(serializer.data)
 
 
@@ -166,6 +175,14 @@ class AdminDeliveryPayoutScheduleView(APIView):
 
         payout.status = "scheduled"
         payout.save(update_fields=["status"])
+        CreateAdminAuditLogAction().execute(
+            request=request,
+            action='payout',
+            entity_type='delivery_payout',
+            entity_id=str(payout.id),
+            summary=f"Scheduled delivery payout {payout.id}.",
+            metadata={'status': 'scheduled'},
+        )
         return Response(DeliveryPartnerPayoutSerializer(payout).data)
 
 
@@ -185,6 +202,14 @@ class AdminDeliveryPayoutSendPaymentView(APIView):
         payout.payment_sent_at = timezone.now()
         payout.paid_at = timezone.now()
         payout.save(update_fields=["status", "transaction_ref", "payment_sent_at", "paid_at"])
+        CreateAdminAuditLogAction().execute(
+            request=request,
+            action='payout',
+            entity_type='delivery_payout',
+            entity_id=str(payout.id),
+            summary=f"Marked delivery payout {payout.id} as paid.",
+            metadata={'status': 'paid', 'transaction_ref': transaction_ref},
+        )
         return Response(DeliveryPartnerPayoutSerializer(payout).data)
 
 
@@ -201,4 +226,12 @@ class AdminDeliveryPayoutForcePaidView(APIView):
         payout.status = "verified"
         payout.partner_verified_at = timezone.now()
         payout.save(update_fields=["status", "partner_verified_at"])
+        CreateAdminAuditLogAction().execute(
+            request=request,
+            action='payout',
+            entity_type='delivery_payout',
+            entity_id=str(payout.id),
+            summary=f"Force-verified delivery payout {payout.id}.",
+            metadata={'status': 'verified'},
+        )
         return Response(DeliveryPartnerPayoutSerializer(payout).data)

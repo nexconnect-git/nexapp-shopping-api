@@ -7,6 +7,7 @@ from django.db.models import Count, Q, Sum
 
 from accounts.data.user_repository import UserRepository
 from accounts.models.user import User
+from accounts.actions.audit_actions import CreateAdminAuditLogAction
 
 
 class GetAdminStatsAction:
@@ -151,4 +152,13 @@ class UpdateAccountStatusAction:
         elif status in ('suspended', 'rejected'):
             update_data['is_active'] = False
 
-        return UserRepository.update(user, update_data)
+        updated_user = UserRepository.update(user, update_data)
+        CreateAdminAuditLogAction().execute(
+            request=request,
+            action='status_change',
+            entity_type='user',
+            entity_id=str(user.id),
+            summary=f"Updated account status for {user.username} to {status}.",
+            metadata={'status': status, 'fields': update_data},
+        )
+        return updated_user

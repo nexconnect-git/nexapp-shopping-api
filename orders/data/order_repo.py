@@ -56,3 +56,7 @@ class OrderRepository:
     def get_base_queryset():
         """Return the base Order queryset for arbitrary filtering."""
         return Order.objects.all()
+
+    @staticmethod
+    def get_payment_export_queryset():
+        return Order.objects.select_related('customer', 'vendor').order_by('-placed_at')

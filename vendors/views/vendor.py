@@ -5,8 +5,9 @@ from rest_framework.permissions import IsAuthenticated
 
 from accounts.permissions import IsApprovedVendor, IsVendor
 from vendors.serializers.public import VendorSerializer
-from vendors.actions import SetStoreStatusAction, BulkUpdateStockAction
+from vendors.actions import BulkUpdateStockAction, SetStoreStatusAction, VendorAnalyticsAction, VendorOperationsSummaryAction
 from vendors.data import VendorOrderRepository, VendorProductRepository
+from products.actions import UpdateVendorProductAction
 from products.serializers import ProductSerializer, ProductCreateUpdateSerializer
 from products.models import Product
 from orders.serializers import OrderSerializer
@@ -23,6 +24,10 @@ class VendorProfileView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+
+class VendorStoreSettingsView(VendorProfileView):
+    pass
 
 class VendorDashboardView(APIView):
     permission_classes = [IsAuthenticated, IsApprovedVendor]
@@ -49,6 +54,23 @@ class VendorDashboardView(APIView):
             "low_stock_count": low_stock.count(),
             "low_stock_products": ProductSerializer(low_stock, many=True).data,
         })
+
+
+class VendorOperationsSummaryView(APIView):
+    permission_classes = [IsAuthenticated, IsApprovedVendor]
+
+    def get(self, request):
+        return Response(VendorOperationsSummaryAction().execute(request.user.vendor_profile))
+
+class VendorAnalyticsView(APIView):
+    permission_classes = [IsAuthenticated, IsApprovedVendor]
+
+    def get(self, request):
+        action = VendorAnalyticsAction()
+        return Response(action.execute(
+            vendor=request.user.vendor_profile,
+            days=request.query_params.get("days", "30"),
+        ))
 
 class SetStoreStatusView(APIView):
     permission_classes = [IsAuthenticated, IsApprovedVendor]
@@ -91,7 +113,21 @@ class VendorProductViewSet(viewsets.ModelViewSet):
         return ProductSerializer
 
     def get_queryset(self):
-        return VendorProductRepository().filter(vendor=self.request.user.vendor_profile)
+        return VendorProductRepository().get_products_for_vendor_with_growth(
+            self.request.user.vendor_profile
+        )
 
     def perform_create(self, serializer):
         serializer.save(vendor=self.request.user.vendor_profile)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop("partial", False)
+        product = self.get_object()
+        serializer = ProductCreateUpdateSerializer(product, data=request.data, partial=partial, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        product = UpdateVendorProductAction().execute(product, serializer.validated_data)
+        return Response(ProductSerializer(product, context={"request": request}).data)
+
+    def partial_update(self, request, *args, **kwargs):
+        kwargs["partial"] = True
+        return self.update(request, *args, **kwargs)

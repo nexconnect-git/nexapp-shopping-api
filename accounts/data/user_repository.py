@@ -37,6 +37,14 @@ class UserRepository:
         except User.DoesNotExist:
             return None
 
+    @staticmethod
+    def get_by_phone(phone: str, role: Optional[str] = None) -> Optional[User]:
+        """Return the most recent user for a phone number, optionally restricted by role."""
+        queryset = User.objects.filter(phone=phone)
+        if role:
+            queryset = queryset.filter(role=role)
+        return queryset.order_by('-created_at').first()
+
     # ── Collection queries ────────────────────────────────────────────────────
 
     @staticmethod
@@ -58,6 +66,11 @@ class UserRepository:
     def get_staff() -> QuerySet:
         """Return all staff users ordered newest first."""
         return User.objects.filter(is_staff=True).order_by('-created_at')
+
+    @staticmethod
+    def get_admin_users() -> QuerySet:
+        """Return admin-role users only for the admin access screen."""
+        return User.objects.filter(role='admin').order_by('-created_at')
 
     @staticmethod
     def superuser_exists() -> bool:

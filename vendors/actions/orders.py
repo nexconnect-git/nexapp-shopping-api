@@ -8,6 +8,7 @@ from notifications.models import Notification
 from delivery.models import DeliveryAssignment
 from delivery.tasks import search_and_notify_partners
 from backend.events import order_cancelled
+from vendors.realtime import broadcast_order_event
 
 
 class UpdateOrderStatusAction(BaseAction):
@@ -35,6 +36,7 @@ class UpdateOrderStatusAction(BaseAction):
         if new_status == "ready":
             order.delivery_otp = str(random.randint(100000, 999999))
 
+        old_status = order.status
         order.status = new_status
         order.save(update_fields=["status", "delivery_otp", "updated_at"])
 
@@ -63,6 +65,7 @@ class UpdateOrderStatusAction(BaseAction):
             notification_type="order",
             data={"order_id": str(order.id), "order_number": order.order_number},
         )
+        broadcast_order_event(order, "order_updated")
 
         # Auto-trigger delivery search when vendor marks order ready (if enabled for this vendor)
         if new_status == "ready" and order.vendor.auto_order_acceptance:
@@ -205,6 +208,35 @@ class CancelDeliverySearchAction(BaseAction):
         assignment.notified_partners.clear()
 
         return order
+
+
+class AcceptOrderAction(BaseAction):
+    def execute(self, order):
+        if order.status != "placed":
+            raise ValueError("Only new orders can be accepted.")
+        return UpdateOrderStatusAction().execute(order, "confirmed")
+
+
+class RejectOrderAction(BaseAction):
+    def execute(self, order, reason: str):
+        reason = (reason or "").strip() or "Rejected by vendor."
+        if order.status != "placed":
+            raise ValueError("Only new orders can be rejected.")
+        return UpdateOrderStatusAction().execute(order, "cancelled", reason)
+
+
+class StartPreparingOrderAction(BaseAction):
+    def execute(self, order):
+        if order.status != "confirmed":
+            raise ValueError("Only confirmed orders can move to preparing.")
+        return UpdateOrderStatusAction().execute(order, "preparing")
+
+
+class MarkOrderReadyAction(BaseAction):
+    def execute(self, order):
+        if order.status != "preparing":
+            raise ValueError("Only preparing orders can be marked ready.")
+        return UpdateOrderStatusAction().execute(order, "ready")
 
 
 # Backwards-compatible alias.

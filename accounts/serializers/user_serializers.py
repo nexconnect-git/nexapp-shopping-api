@@ -26,6 +26,18 @@ class UserLoginSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True)
 
 
+class MobileOTPRequestSerializer(serializers.Serializer):
+    phone = serializers.CharField(max_length=20)
+
+
+class MobileOTPVerifySerializer(serializers.Serializer):
+    phone = serializers.CharField(max_length=20)
+    otp = serializers.CharField(min_length=6, max_length=6)
+    first_name = serializers.CharField(required=False, allow_blank=True, max_length=150)
+    last_name = serializers.CharField(required=False, allow_blank=True, max_length=150)
+    email = serializers.EmailField(required=False, allow_blank=True)
+
+
 class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
@@ -46,7 +58,16 @@ class AdminUserUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['first_name', 'last_name', 'email', 'phone', 'is_verified', 'is_active']
+        fields = [
+            'username',
+            'first_name',
+            'last_name',
+            'email',
+            'phone',
+            'country',
+            'is_verified',
+            'is_active',
+        ]
 
 
 class AdminUserSerializer(serializers.ModelSerializer):
@@ -59,8 +80,10 @@ class AdminUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'username', 'email', 'password', 'first_name', 'last_name',
-                  'phone', 'role', 'is_staff', 'is_superuser', 'created_at', 'account_type']
-        read_only_fields = ['id', 'role', 'is_staff', 'is_superuser', 'created_at']
+                  'phone', 'role', 'is_staff', 'is_superuser', 'is_active',
+                  'is_verified', 'created_at', 'account_type']
+        read_only_fields = ['id', 'role', 'is_staff', 'is_superuser', 'is_active',
+                            'is_verified', 'created_at']
 
     def create(self, validated_data):
         password = validated_data.pop('password')

@@ -13,7 +13,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import Address
-from helpers.geo_helpers import haversine
+from helpers.delivery_quotes import quote_vendor_delivery
 from orders.actions.payment_actions import CreateRazorpayOrderAction, VerifyRazorpayPaymentAction
 from orders.data.order_repo import OrderRepository
 from orders.serializers import OrderSerializer
@@ -33,6 +33,7 @@ class InitiateCheckoutPaymentView(APIView):
         delivery_address_id (uuid): Used to compute delivery fee.
         coupon_code (str):          Applied coupon code.
         wallet_amount (float):      Amount to deduct from wallet.
+        confirm_far_delivery (bool): Acknowledge long-distance ordering before payment.
     """
 
     permission_classes = [IsAuthenticated]
@@ -57,36 +58,56 @@ class InitiateCheckoutPaymentView(APIView):
 
         # Compute delivery fee from address
         delivery_fee = Decimal('0')
+        far_delivery_quotes = []
         address_id = request.data.get('delivery_address_id')
+        confirm_far_delivery = bool(request.data.get('confirm_far_delivery', False))
         if address_id:
             try:
                 delivery_address = Address.objects.get(pk=address_id, user=request.user)
                 platform = PlatformSetting.get_setting()
                 vendor_seen: set = set()
-                for item in cart.items.select_related('product__vendor').all():
+                cart_items = list(cart.items.select_related('product__vendor').all())
+                for item in cart_items:
                     vendor = item.product.vendor
                     if vendor.id in vendor_seen:
                         continue
                     vendor_seen.add(vendor.id)
-                    subtotal = sum(
-                        ci.product.price * ci.quantity
-                        for ci in cart.items.all()
-                        if ci.product.vendor_id == vendor.id
+                    vendor_items = [ci for ci in cart_items if ci.product.vendor_id == vendor.id]
+                    subtotal = sum(ci.product.price * ci.quantity for ci in vendor_items)
+                    quote = quote_vendor_delivery(
+                        vendor=vendor,
+                        address=delivery_address,
+                        products=[ci.product for ci in vendor_items],
+                        quantities={str(ci.product.id): ci.quantity for ci in vendor_items},
+                        subtotal=subtotal,
+                        platform=platform,
                     )
+                    if not quote.is_serviceable:
+                        return Response(
+                            {
+                                'error': quote.serviceability_error,
+                                'code': 'delivery_not_serviceable',
+                                'details': quote.as_dict(),
+                            },
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+                    if quote.requires_far_delivery_confirmation:
+                        far_delivery_quotes.append(quote.as_dict())
                     if platform.free_delivery_above > 0 and subtotal >= platform.free_delivery_above:
                         continue
-                    distance = 0.0
-                    if delivery_address.latitude and delivery_address.longitude:
-                        distance = haversine(
-                            float(vendor.latitude), float(vendor.longitude),
-                            float(delivery_address.latitude), float(delivery_address.longitude),
-                        )
-                    delivery_fee += (
-                        platform.delivery_base_fee
-                        + platform.delivery_per_km_fee * Decimal(str(round(distance, 2)))
-                    )
+                    delivery_fee += quote.delivery_fee
             except Address.DoesNotExist:
                 pass
+
+        if far_delivery_quotes and not confirm_far_delivery:
+            return Response(
+                {
+                    'error': 'Far delivery confirmation required.',
+                    'code': 'far_delivery_confirmation_required',
+                    'quotes': far_delivery_quotes,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
 
         # Coupon discount
         coupon_discount = Decimal('0')
@@ -126,6 +147,7 @@ class InitiateCheckoutPaymentView(APIView):
             'amount': rz_order['amount'],
             'currency': rz_order['currency'],
             'key_id': settings.RAZORPAY_KEY_ID,
+            'requires_far_delivery_confirmation': False,
         })
 
 

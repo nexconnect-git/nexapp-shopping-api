@@ -5,7 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 
 from accounts.permissions import IsAdminRole
 from accounts.data.user_repository import UserRepository
-from accounts.serializers.user_serializers import AdminUserSerializer
+from accounts.serializers.user_serializers import AdminUserSerializer, AdminUserUpdateSerializer
 from accounts.actions.admin_actions import UpdateAccountStatusAction
 
 class AdminUserViewSet(viewsets.ModelViewSet):
@@ -13,7 +13,20 @@ class AdminUserViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsAdminRole]
 
     def get_queryset(self):
-        return UserRepository.get_all()
+        return UserRepository.get_admin_users()
+
+    def get_serializer_class(self):
+        if self.action in ('update', 'partial_update'):
+            return AdminUserUpdateSerializer
+        return AdminUserSerializer
+
+    def partial_update(self, request, *args, **kwargs):
+        response = super().partial_update(request, *args, **kwargs)
+        return Response(AdminUserSerializer(self.get_object()).data, status=response.status_code)
+
+    def update(self, request, *args, **kwargs):
+        response = super().update(request, *args, **kwargs)
+        return Response(AdminUserSerializer(self.get_object()).data, status=response.status_code)
 
     @action(detail=True, methods=['post'], url_path='status')
     def update_status(self, request, pk=None):

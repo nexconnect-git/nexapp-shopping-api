@@ -4,6 +4,7 @@ from django.db import transaction
 
 from products.models import Product, ProductImage
 from vendors.models import Vendor
+from products.actions.approval import ProductApprovalPolicy
 from .base import BaseAction
 
 logger = logging.getLogger(__name__)
@@ -79,6 +80,14 @@ class AddProductImageAction(BaseAction):
                 is_ai_generated=is_ai_generated,
                 display_order=existing_count,
             )
+            if product.approval_status in {
+                Product.APPROVAL_STATUS_APPROVED,
+                Product.APPROVAL_STATUS_REJECTED,
+                Product.APPROVAL_STATUS_PENDING,
+            }:
+                update_fields = ProductApprovalPolicy.mark_requires_review(product, ["images"])
+                update_fields.append("updated_at")
+                product.save(update_fields=sorted(set(update_fields)))
         return img
 
 

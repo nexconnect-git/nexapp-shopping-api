@@ -2,11 +2,13 @@ from vendors.views.public import (
     VendorRegistrationView, VendorListView, VendorDetailView, NearbyVendorsView
 )
 from vendors.views.vendor import (
-    VendorProfileView, VendorDashboardView, SetStoreStatusView, BulkUpdateStockView, VendorProductViewSet
+    VendorProfileView, VendorStoreSettingsView, VendorDashboardView, VendorOperationsSummaryView, VendorAnalyticsView, SetStoreStatusView, BulkUpdateStockView, VendorProductViewSet
 )
 from vendors.views.orders import (
     VendorOrdersView, VendorOrderDetailView, VendorUpdateOrderStatusView,
     VendorVerifyPickupOtpView, VendorStartDeliverySearchView, VendorCancelDeliverySearchView,
+    VendorLiveOrdersView, VendorAcceptOrderView, VendorRejectOrderView,
+    VendorStartPreparingOrderView, VendorMarkOrderReadyView,
 )
 from vendors.views.admin import (
     AdminVendorListView,
@@ -26,12 +28,35 @@ from vendors.views.admin_payouts import (
     AdminVendorPayoutForcePaidView,
 )
 from vendors.views.categories import VendorCategoryListCreateView, VendorSubcategoryCreateView
+from products.views.catalog_views import (
+    AdminApproveVendorProductView,
+    AdminPendingVendorProductListView,
+    AdminRejectVendorProductView,
+    VendorAvailableCatalogProductsView,
+    VendorCatalogProductDetailView,
+    VendorCatalogProposalListCreateView,
+    VendorCreateProductFromCatalogView,
+    VendorInheritedProductDetailView,
+    VendorInheritedProductDraftBatchCreateView,
+    VendorInheritedProductDuplicateView,
+    VendorInheritedProductImagePolicyView,
+    VendorInheritedProductListView,
+    VendorInheritedProductSubmitView,
+)
 
 __all__ = [
     'VendorRegistrationView',
     'VendorListView',
     'NearbyVendorsView',
     'VendorDashboardView',
+    'VendorStoreSettingsView',
+    'VendorOperationsSummaryView',
+    'VendorLiveOrdersView',
+    'VendorAcceptOrderView',
+    'VendorRejectOrderView',
+    'VendorStartPreparingOrderView',
+    'VendorMarkOrderReadyView',
+    'VendorAnalyticsView',
     'VendorPayoutListView',
     'VendorPayoutApproveView',
     'VendorPayoutDeclineView',
@@ -62,4 +87,17 @@ __all__ = [
     'VendorCategoryListCreateView',
     'VendorSubcategoryCreateView',
     'VendorWalletTransactionListView',
+    'VendorAvailableCatalogProductsView',
+    'VendorCatalogProductDetailView',
+    'VendorCatalogProposalListCreateView',
+    'VendorCreateProductFromCatalogView',
+    'VendorInheritedProductDetailView',
+    'VendorInheritedProductDraftBatchCreateView',
+    'VendorInheritedProductDuplicateView',
+    'VendorInheritedProductImagePolicyView',
+    'VendorInheritedProductListView',
+    'VendorInheritedProductSubmitView',
+    'AdminPendingVendorProductListView',
+    'AdminApproveVendorProductView',
+    'AdminRejectVendorProductView',
 ]

@@ -7,6 +7,8 @@ from accounts.serializers.user_serializers import (
     AdminUserSerializer,
 )
 from accounts.serializers.address_serializers import AddressSerializer
+from accounts.serializers.audit_serializers import AdminAuditLogSerializer
+from accounts.serializers.rbac_serializers import AdminPermissionGrantSerializer
 
 __all__ = [
     'UserRegistrationSerializer',
@@ -16,4 +18,6 @@ __all__ = [
     'AdminUserUpdateSerializer',
     'AdminUserSerializer',
     'AddressSerializer',
+    'AdminAuditLogSerializer',
+    'AdminPermissionGrantSerializer',
 ]

@@ -17,6 +17,7 @@ from rest_framework.views import APIView
 
 from accounts.models import User
 from accounts.permissions import IsAdminRole
+from accounts.actions.audit_actions import CreateAdminAuditLogAction
 from notifications.models import DeviceToken, Notification
 from notifications.serializers import (
     AdminNotificationSerializer,
@@ -234,6 +235,14 @@ class AdminSendNotificationView(APIView):
                 message=data["message"],
                 notification_type=data["notification_type"],
             )
+            CreateAdminAuditLogAction().execute(
+                request=request,
+                action='notification',
+                entity_type='notification',
+                entity_id=str(notification.id),
+                summary=f"Sent notification '{notification.title}' to {recipient.username}.",
+                metadata={'user_id': str(recipient.id), 'notification_type': notification.notification_type},
+            )
             return Response(
                 AdminNotificationSerializer(notification).data,
                 status=status.HTTP_201_CREATED,
@@ -252,6 +261,13 @@ class AdminSendNotificationView(APIView):
             for user in qs
         ]
         Notification.objects.bulk_create(notifications)
+        CreateAdminAuditLogAction().execute(
+            request=request,
+            action='notification',
+            entity_type='notification_broadcast',
+            summary=f"Broadcast notification '{data['title']}' to {len(notifications)} users.",
+            metadata={'role': role or 'all', 'count': len(notifications), 'notification_type': data['notification_type']},
+        )
         return Response(
             {"status": f"Notification sent to {len(notifications)} users."},
             status=status.HTTP_201_CREATED,
@@ -280,5 +296,13 @@ class AdminDeleteNotificationView(APIView):
                 {"error": "Notification not found."},
                 status=status.HTTP_404_NOT_FOUND,
             )
+        CreateAdminAuditLogAction().execute(
+            request=request,
+            action='delete',
+            entity_type='notification',
+            entity_id=str(notification.id),
+            summary=f"Deleted notification '{notification.title}'.",
+            metadata={'notification_type': notification.notification_type},
+        )
         notification.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

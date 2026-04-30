@@ -19,7 +19,7 @@ class DeliveryPartnerSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
         ]
         read_only_fields = [
-            'id', 'is_approved', 'average_rating', 'total_deliveries',
+            'id', 'average_rating', 'total_deliveries',
             'total_earnings', 'wallet_balance', 'created_at', 'updated_at',
         ]
 
@@ -39,14 +39,22 @@ class DeliveryPartnerSerializer(serializers.ModelSerializer):
         return data
 
     def update(self, instance, validated_data):
-        """Forward ``user_is_active`` from request data to the related User model."""
+        """Forward admin-edit user fields from request data to the related User model."""
         request = self.context.get('request')
-        if request and 'user_is_active' in request.data:
-            val = request.data['user_is_active']
-            if isinstance(val, str):
-                val = val.lower() == 'true'
-            instance.user.is_active = bool(val)
-            instance.user.save(update_fields=['is_active'])
+        if request:
+            user_updated = []
+            if 'user_is_active' in request.data:
+                val = request.data['user_is_active']
+                if isinstance(val, str):
+                    val = val.lower() == 'true'
+                instance.user.is_active = bool(val)
+                user_updated.append('is_active')
+            for field in ['username', 'first_name', 'last_name', 'email', 'phone']:
+                if field in request.data:
+                    setattr(instance.user, field, request.data[field])
+                    user_updated.append(field)
+            if user_updated:
+                instance.user.save(update_fields=list(set(user_updated)))
         return super().update(instance, validated_data)
 
 

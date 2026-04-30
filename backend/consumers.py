@@ -15,7 +15,7 @@ class AdminStatsConsumer(AsyncWebsocketConsumer):
             self.room_group_name,
             self.channel_name
         )
-        await self.accept()
+        await self.accept(subprotocol=self.scope.get('ws_subprotocol'))
 
         stats = await self.get_stats()
         await self.send(text_data=json.dumps({

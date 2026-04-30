@@ -8,6 +8,7 @@ from products.models.product import Product
 
 class ProductRepository:
     """All ORM access for the Product model lives here."""
+    CUSTOMER_VISIBLE_APPROVAL_STATUS = Product.APPROVAL_STATUS_APPROVED
 
     @staticmethod
     def get_by_id(pk, select_related=None) -> Product | None:
@@ -39,7 +40,12 @@ class ProductRepository:
     @staticmethod
     def get_all(select_related=None, prefetch_related=None):
         """Return all products with optional related data fetching."""
-        qs = Product.objects.all()
+        qs = Product.objects.filter(
+            approval_status=ProductRepository.CUSTOMER_VISIBLE_APPROVAL_STATUS,
+            status="active",
+            is_available=True,
+            stock__gt=0,
+        )
         if select_related:
             qs = qs.select_related(*select_related)
         if prefetch_related:
@@ -49,7 +55,13 @@ class ProductRepository:
     @staticmethod
     def get_featured():
         """Return featured, available products."""
-        return Product.objects.filter(is_featured=True, is_available=True)
+        return Product.objects.filter(
+            is_featured=True,
+            is_available=True,
+            status="active",
+            stock__gt=0,
+            approval_status=ProductRepository.CUSTOMER_VISIBLE_APPROVAL_STATUS,
+        )
 
     @staticmethod
     def get_low_stock(vendor):
@@ -76,6 +88,8 @@ class ProductRepository:
             Filtered queryset with vendor, category, and images pre-fetched.
         """
         qs = Product.objects.select_related("vendor", "category").prefetch_related("images")
+        qs = qs.filter(approval_status=ProductRepository.CUSTOMER_VISIBLE_APPROVAL_STATUS)
+        qs = qs.filter(status="active", stock__gt=0)
         if category:
             qs = qs.filter(category__slug=category)
         if vendor:

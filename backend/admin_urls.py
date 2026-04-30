@@ -8,7 +8,13 @@ from backend.scheduled_tasks_views import (
     AdminScheduledTaskListCreateView,
     AdminScheduledTaskCancelView,
 )
-from accounts.views import AdminUserViewSet, AdminStatsView
+from accounts.views import (
+    AdminAuditLogListView,
+    AdminPermissionGrantDetailView,
+    AdminPermissionGrantListCreateView,
+    AdminStatsView,
+    AdminUserViewSet,
+)
 from vendors.views import (
     AdminVendorListView,
     AdminVendorDetailView,
@@ -35,6 +41,17 @@ from delivery.views import (
     AdminDeliveryPayoutForcePaidView,
 )
 from products.views import (
+    AdminCatalogProductDetailView,
+    AdminCatalogProductImageDetailView,
+    AdminCatalogProductImagesView,
+    AdminCatalogProductGrantVendorView,
+    AdminCatalogProductListCreateView,
+    AdminCatalogProposalItemApproveView,
+    AdminCatalogProposalItemRejectView,
+    AdminCatalogProposalListView,
+    AdminApproveVendorProductView,
+    AdminPendingVendorProductListView,
+    AdminRejectVendorProductView,
     AdminCategoryListCreateView,
     AdminCategoryDetailView,
     AdminProductListCreateView,
@@ -49,6 +66,15 @@ from orders.views import (
     IssueMessageCreateView,
     AdminPlatformSettingView,
     AdminPaymentsView,
+    AdminDeliveryZoneDetailView,
+    AdminDeliveryZoneListCreateView,
+    AdminFeatureFlagDetailView,
+    AdminFeatureFlagListCreateView,
+    AdminFinanceExportView,
+    AdminRefundLedgerDetailView,
+    AdminRefundLedgerListCreateView,
+    AdminTaxRuleDetailView,
+    AdminTaxRuleListCreateView,
 )
 from notifications.views import (
     AdminNotificationListView,
@@ -72,6 +98,9 @@ urlpatterns = [
     
     # Dashboard summary statistics
     path('stats/', AdminStatsView.as_view(), name='admin-stats'),
+    path('audit-logs/', AdminAuditLogListView.as_view(), name='admin-audit-logs'),
+    path('permission-grants/', AdminPermissionGrantListCreateView.as_view(), name='admin-permission-grants'),
+    path('permission-grants/<uuid:pk>/', AdminPermissionGrantDetailView.as_view(), name='admin-permission-grant-detail'),
 
     # Vendors — CRUD
     path('vendors/', AdminVendorListView.as_view(), name='admin-vendors'),
@@ -103,6 +132,17 @@ urlpatterns = [
     # Categories
     path('categories/', AdminCategoryListCreateView.as_view(), name='admin-categories'),
     path('categories/<uuid:pk>/', AdminCategoryDetailView.as_view(), name='admin-category-detail'),
+    path('catalog-products/', AdminCatalogProductListCreateView.as_view(), name='admin-catalog-products'),
+    path('catalog-products/<uuid:pk>/', AdminCatalogProductDetailView.as_view(), name='admin-catalog-product-detail'),
+    path('catalog-products/<uuid:pk>/images/', AdminCatalogProductImagesView.as_view(), name='admin-catalog-product-images'),
+    path('catalog-products/<uuid:pk>/images/<uuid:image_id>/', AdminCatalogProductImageDetailView.as_view(), name='admin-catalog-product-image-detail'),
+    path('catalog-products/<uuid:pk>/grant-vendor/', AdminCatalogProductGrantVendorView.as_view(), name='admin-catalog-product-grant-vendor'),
+    path('catalog-proposals/', AdminCatalogProposalListView.as_view(), name='admin-catalog-proposals'),
+    path('catalog-proposals/<uuid:proposal_id>/items/<uuid:item_id>/approve/', AdminCatalogProposalItemApproveView.as_view(), name='admin-catalog-proposal-item-approve'),
+    path('catalog-proposals/<uuid:proposal_id>/items/<uuid:item_id>/reject/', AdminCatalogProposalItemRejectView.as_view(), name='admin-catalog-proposal-item-reject'),
+    path('vendor-products/pending/', AdminPendingVendorProductListView.as_view(), name='admin-vendor-products-pending'),
+    path('vendor-products/<uuid:pk>/approve/', AdminApproveVendorProductView.as_view(), name='admin-vendor-product-approve'),
+    path('vendor-products/<uuid:pk>/reject/', AdminRejectVendorProductView.as_view(), name='admin-vendor-product-reject'),
 
     # Products
     path('products/', AdminProductListCreateView.as_view(), name='admin-products'),
@@ -113,6 +153,17 @@ urlpatterns = [
     path('orders/', AdminOrderListView.as_view(), name='admin-orders'),
     path('orders/<uuid:pk>/', AdminOrderDetailView.as_view(), name='admin-order-detail'),
     path('payments/', AdminPaymentsView.as_view(), name='admin-payments'),
+    path('refund-ledger/', AdminRefundLedgerListCreateView.as_view(), name='admin-refund-ledger'),
+    path('refund-ledger/<uuid:pk>/', AdminRefundLedgerDetailView.as_view(), name='admin-refund-ledger-detail'),
+    path('exports/finance/', AdminFinanceExportView.as_view(), name='admin-finance-export'),
+
+    # Operations configuration
+    path('delivery-zones/', AdminDeliveryZoneListCreateView.as_view(), name='admin-delivery-zones'),
+    path('delivery-zones/<uuid:pk>/', AdminDeliveryZoneDetailView.as_view(), name='admin-delivery-zone-detail'),
+    path('tax-rules/', AdminTaxRuleListCreateView.as_view(), name='admin-tax-rules'),
+    path('tax-rules/<uuid:pk>/', AdminTaxRuleDetailView.as_view(), name='admin-tax-rule-detail'),
+    path('feature-flags/', AdminFeatureFlagListCreateView.as_view(), name='admin-feature-flags'),
+    path('feature-flags/<str:key>/', AdminFeatureFlagDetailView.as_view(), name='admin-feature-flag-detail'),
 
     # Order Issues
     path('issues/', AdminOrderIssueListView.as_view(), name='admin-issues'),

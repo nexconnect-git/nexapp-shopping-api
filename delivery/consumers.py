@@ -24,7 +24,7 @@ class DeliveryTrackingConsumer(AsyncWebsocketConsumer):
             self.channel_name
         )
 
-        await self.accept()
+        await self.accept(subprotocol=self.scope.get('ws_subprotocol'))
 
     async def disconnect(self, close_code):
         if hasattr(self, 'room_group_name'):
@@ -38,13 +38,16 @@ class DeliveryTrackingConsumer(AsyncWebsocketConsumer):
 
         # Expecting { 'action': 'update_location', 'lat': 12.x, 'lng': 77.x }
         if data.get('action') == 'update_location':
-            lat = data.get('lat')
-            lng = data.get('lng')
+            can_publish = await self.can_publish_location(self.order_id, self.scope['user'])
+            if not can_publish:
+                return
 
             # Persist partner coordinates and get updated ETA
-            eta_minutes = await self.update_partner_location_and_eta(
-                self.order_id, self.scope['user'], lat, lng
+            partner_id, lat, lng, eta_minutes = await self.update_partner_location_and_eta(
+                self.order_id, self.scope['user'], data.get('lat'), data.get('lng')
             )
+            if partner_id is None or lat is None or lng is None:
+                return
 
             # Broadcast location to everyone tracking this order
             await self.channel_layer.group_send(
@@ -53,7 +56,7 @@ class DeliveryTrackingConsumer(AsyncWebsocketConsumer):
                     'type': 'location_update',
                     'lat': lat,
                     'lng': lng,
-                    'partner_id': data.get('partner_id'),
+                    'partner_id': partner_id,
                 }
             )
 
@@ -80,9 +83,17 @@ class DeliveryTrackingConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def update_partner_location_and_eta(self, order_id, user, lat, lng):
-        """Persist partner GPS coords and return a recalculated ETA (int minutes) or None."""
+        """Persist partner GPS coords and return partner id + ETA."""
         if lat is None or lng is None:
-            return None
+            return None, None, None, None
+
+        try:
+            lat = float(lat)
+            lng = float(lng)
+        except (TypeError, ValueError):
+            return None, None, None, None
+
+        partner = None
         try:
             partner = user.delivery_profile
             DeliveryPartner.objects.filter(pk=partner.pk).update(
@@ -93,14 +104,26 @@ class DeliveryTrackingConsumer(AsyncWebsocketConsumer):
                 order.vendor.latitude and order.vendor.longitude
                 and order.delivery_latitude and order.delivery_longitude
             ):
-                return calculate_eta_minutes(
-                    float(lat), float(lng),
+                eta_minutes = calculate_eta_minutes(
+                    lat, lng,
                     float(order.vendor.latitude), float(order.vendor.longitude),
                     float(order.delivery_latitude), float(order.delivery_longitude),
                 )
+                return str(partner.user_id), lat, lng, eta_minutes
         except Exception:
             pass
-        return None
+        return (str(partner.user_id), lat, lng, None) if partner else (None, None, None, None)
+
+    @database_sync_to_async
+    def can_publish_location(self, order_id, user):
+        try:
+            order = Order.objects.select_related('assignment__accepted_partner__user').get(id=order_id)
+            accepted_partner = getattr(order.assignment, 'accepted_partner', None)
+            return bool(accepted_partner and accepted_partner.user == user)
+        except Order.DoesNotExist:
+            return False
+        except Exception:
+            return False
 
     @database_sync_to_async
     def check_tracking_access(self, order_id, user):

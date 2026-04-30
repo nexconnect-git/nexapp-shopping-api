@@ -6,6 +6,7 @@ from accounts.actions.auth_actions import (
 )
 from accounts.actions.profile_actions import UpdateProfileAction, ChangePasswordAction
 from accounts.actions.admin_actions import GetAdminStatsAction, ManageCustomerAction
+from accounts.actions.audit_actions import CreateAdminAuditLogAction
 
 __all__ = [
     'RegisterAction',
@@ -16,4 +17,5 @@ __all__ = [
     'ChangePasswordAction',
     'GetAdminStatsAction',
     'ManageCustomerAction',
+    'CreateAdminAuditLogAction',
 ]

@@ -23,7 +23,7 @@ class IssueChatConsumer(AsyncWebsocketConsumer):
             self.channel_name
         )
 
-        await self.accept()
+        await self.accept(subprotocol=self.scope.get('ws_subprotocol'))
 
     async def disconnect(self, close_code):
         if hasattr(self, 'room_group_name'):

@@ -13,6 +13,25 @@ class AdminVendorSerializer(VendorSerializer):
     class Meta(VendorSerializer.Meta):
         read_only_fields = ["id", "average_rating", "total_ratings", "created_at", "updated_at"]
 
+    def update(self, instance, validated_data):
+        request = self.context.get('request')
+        user_fields = ['username', 'first_name', 'last_name']
+        if request:
+            user_updated = []
+            for field in user_fields:
+                if field in request.data:
+                    setattr(instance.user, field, request.data[field])
+                    user_updated.append(field)
+            if 'email' in request.data:
+                instance.user.email = request.data['email']
+                user_updated.append('email')
+            if 'phone' in request.data:
+                instance.user.phone = request.data['phone']
+                user_updated.append('phone')
+            if user_updated:
+                instance.user.save(update_fields=list(set(user_updated)))
+        return super().update(instance, validated_data)
+
 class VendorFullOnboardSerializer(serializers.Serializer):
     # Step 1
     username = serializers.CharField()

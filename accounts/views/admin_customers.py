@@ -7,7 +7,7 @@ from django.db import transaction
 from accounts.permissions import IsAdminRole
 from accounts.models.user import User
 from accounts.models.loyalty import LoyaltyAccount, LoyaltyTransaction
-from accounts.serializers.user_serializers import AdminUserSerializer
+from accounts.serializers.user_serializers import AdminUserSerializer, AdminUserUpdateSerializer
 from accounts.actions.admin_actions import UpdateAccountStatusAction
 from accounts.data.user_repository import UserRepository
 
@@ -16,6 +16,19 @@ class AdminCustomerViewSet(viewsets.ModelViewSet):
     """Admin-only resource for managing customers."""
     serializer_class = AdminUserSerializer
     permission_classes = [IsAuthenticated, IsAdminRole]
+
+    def get_serializer_class(self):
+        if self.action in ('update', 'partial_update'):
+            return AdminUserUpdateSerializer
+        return AdminUserSerializer
+
+    def partial_update(self, request, *args, **kwargs):
+        response = super().partial_update(request, *args, **kwargs)
+        return Response(AdminUserSerializer(self.get_object()).data, status=response.status_code)
+
+    def update(self, request, *args, **kwargs):
+        response = super().update(request, *args, **kwargs)
+        return Response(AdminUserSerializer(self.get_object()).data, status=response.status_code)
 
     def get_queryset(self):
         qs = UserRepository.get_customers()

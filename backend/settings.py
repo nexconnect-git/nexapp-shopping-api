@@ -2,14 +2,26 @@ import os
 import sentry_sdk
 from pathlib import Path
 from datetime import timedelta
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-fpj7*vbp$)!l0t(0-v0%_f-64=rf^w0hf)_$764+%vw8c5_(73')
+DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
-DEBUG = os.environ.get('DEBUG', 'True') == 'True'
+SECRET_KEY = os.environ.get('SECRET_KEY')
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = 'dev-only-insecure-secret-key'
+    else:
+        raise ImproperlyConfigured('SECRET_KEY must be set when DEBUG=False.')
 
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '*').split(',')
+_allowed_hosts = os.environ.get('ALLOWED_HOSTS', '')
+if _allowed_hosts:
+    ALLOWED_HOSTS = [host.strip() for host in _allowed_hosts.split(',') if host.strip()]
+elif DEBUG:
+    ALLOWED_HOSTS = ['localhost', '127.0.0.1', '[::1]']
+else:
+    raise ImproperlyConfigured('ALLOWED_HOSTS must be set when DEBUG=False.')
 
 INSTALLED_APPS = [
     'daphne',
@@ -132,10 +144,12 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # CORS
 # ---------------------------------------------------------------------------
 
-CORS_ALLOW_ALL_ORIGINS = os.environ.get('CORS_ALLOW_ALL_ORIGINS', 'True') == 'True'
+CORS_ALLOW_ALL_ORIGINS = os.environ.get('CORS_ALLOW_ALL_ORIGINS', 'False') == 'True'
 _cors_origins = os.environ.get('CORS_ALLOWED_ORIGINS', '')
 if _cors_origins:
     CORS_ALLOWED_ORIGINS = _cors_origins.split(',')
+elif not CORS_ALLOW_ALL_ORIGINS:
+    CORS_ALLOWED_ORIGINS = []
 
 # ---------------------------------------------------------------------------
 # REST Framework
@@ -160,13 +174,32 @@ REST_FRAMEWORK = {
 # ---------------------------------------------------------------------------
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=int(os.environ.get('ACCESS_TOKEN_LIFETIME_MINUTES', '15'))),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'USER_ID_FIELD': 'id',
     'USER_ID_CLAIM': 'user_id',
 }
+
+AUTH_REFRESH_COOKIE_NAME = os.environ.get('AUTH_REFRESH_COOKIE_NAME', 'nexconnect_refresh')
+AUTH_REFRESH_COOKIE_SAMESITE = os.environ.get('AUTH_REFRESH_COOKIE_SAMESITE', 'Lax')
+AUTH_REFRESH_COOKIE_SECURE = os.environ.get(
+    'AUTH_REFRESH_COOKIE_SECURE',
+    'False' if DEBUG else 'True',
+) == 'True'
+AUTH_REFRESH_COOKIE_DOMAIN = os.environ.get('AUTH_REFRESH_COOKIE_DOMAIN', '')
+
+INITIAL_SUPERUSER_SETUP_ENABLED = os.environ.get(
+    'INITIAL_SUPERUSER_SETUP_ENABLED',
+    'False',
+) == 'True'
+INITIAL_SUPERUSER_SETUP_TOKEN = os.environ.get('INITIAL_SUPERUSER_SETUP_TOKEN', '')
+
+if INITIAL_SUPERUSER_SETUP_ENABLED and not INITIAL_SUPERUSER_SETUP_TOKEN:
+    raise ImproperlyConfigured(
+        'INITIAL_SUPERUSER_SETUP_TOKEN must be set when INITIAL_SUPERUSER_SETUP_ENABLED=True.'
+    )
 
 # ---------------------------------------------------------------------------
 # Email

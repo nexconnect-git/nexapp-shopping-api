@@ -11,7 +11,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import Address
-from backend.utils import haversine
+from helpers.delivery_quotes import DeliveryServiceabilityError, FarDeliveryConfirmationRequired, quote_vendor_delivery
 from orders.actions.ordering import CreateOrdersFromCartAction, CancelOrderAction
 from orders.data.cart_repo import CartRepository
 from orders.data.order_repo import OrderRepository
@@ -39,6 +39,25 @@ class CreateOrderView(APIView):
                 wallet_amount=vd.get("wallet_amount", Decimal("0")),
                 loyalty_points=vd.get("loyalty_points", 0),
                 scheduled_for=vd.get("scheduled_for"),
+                confirm_far_delivery=vd.get("confirm_far_delivery", False),
+            )
+        except FarDeliveryConfirmationRequired as exc:
+            return Response(
+                {
+                    "error": "Far delivery confirmation required.",
+                    "code": "far_delivery_confirmation_required",
+                    "quotes": exc.quotes,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        except DeliveryServiceabilityError as exc:
+            return Response(
+                {
+                    "error": str(exc),
+                    "code": "delivery_not_serviceable",
+                    "details": exc.quote.as_dict(),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
             )
         except ValueError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -263,46 +282,44 @@ class DeliveryFeePreviewView(APIView):
         platform = PlatformSetting.get_setting()
         vendor_seen: dict = {}
         fees = []
+        far_delivery_quotes = []
+        cart_items = list(cart.items.select_related("product__vendor").all())
 
-        for item in cart.items.select_related("product__vendor").all():
+        for item in cart_items:
             vendor = item.product.vendor
             if vendor.id in vendor_seen:
                 continue
             vendor_seen[vendor.id] = True
 
-            distance = 0.0
-            if delivery_address.latitude and delivery_address.longitude:
-                distance = haversine(
-                    float(vendor.latitude), float(vendor.longitude),
-                    float(delivery_address.latitude), float(delivery_address.longitude),
-                )
-
-            subtotal = sum(
-                ci.product.price * ci.quantity
-                for ci in cart.items.all()
-                if ci.product.vendor_id == vendor.id
+            vendor_items = [ci for ci in cart_items if ci.product.vendor_id == vendor.id]
+            subtotal = sum(ci.product.price * ci.quantity for ci in vendor_items)
+            quote = quote_vendor_delivery(
+                vendor=vendor,
+                address=delivery_address,
+                products=[ci.product for ci in vendor_items],
+                quantities={str(ci.product.id): ci.quantity for ci in vendor_items},
+                subtotal=subtotal,
+                platform=platform,
             )
-
+            payload = quote.as_dict()
             if platform.free_delivery_above > 0 and subtotal >= platform.free_delivery_above:
-                fee = Decimal("0")
-                reason = f"Free delivery on orders above ₹{platform.free_delivery_above}"
+                payload["delivery_fee"] = "0.00"
+                payload["reason"] = f"Free delivery on orders above ₹{platform.free_delivery_above}"
             else:
-                fee = (
-                    platform.delivery_base_fee
-                    + platform.delivery_per_km_fee * Decimal(str(round(distance, 2)))
-                )
-                reason = f"₹{platform.delivery_base_fee} base + ₹{platform.delivery_per_km_fee}/km × {round(distance, 1)} km"
-
-            fees.append({
-                "vendor_id": str(vendor.id),
-                "vendor_name": vendor.store_name,
-                "distance_km": round(distance, 2),
-                "delivery_fee": str(fee.quantize(Decimal("0.01"))),
-                "reason": reason,
-            })
+                payload["reason"] = f"Distance-based delivery for {round(payload['distance_km'], 1)} km"
+            fees.append(payload)
+            if quote.requires_far_delivery_confirmation:
+                far_delivery_quotes.append(payload)
 
         total = sum(Decimal(f["delivery_fee"]) for f in fees)
-        return Response({"fees": fees, "total_delivery_fee": str(total.quantize(Decimal("0.01")))})
+        return Response(
+            {
+                "fees": fees,
+                "total_delivery_fee": str(total.quantize(Decimal("0.01"))),
+                "requires_far_delivery_confirmation": bool(far_delivery_quotes),
+                "far_delivery_quotes": far_delivery_quotes,
+            }
+        )
 
 
 class ReorderView(APIView):

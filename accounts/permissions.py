@@ -1,5 +1,7 @@
 from rest_framework.permissions import BasePermission
 
+from accounts.models import AdminPermissionGrant
+
 
 class IsAdminRole(BasePermission):
     """Allows access only to users with role='admin'."""
@@ -21,6 +23,28 @@ class IsSuperUser(BasePermission):
             and request.user.is_authenticated
             and request.user.is_superuser
         )
+
+
+class HasAdminPermission(BasePermission):
+    """Allows superusers or admins with the view's required admin permission."""
+
+    message = 'You do not have permission to perform this admin action.'
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not (user and user.is_authenticated and user.role == 'admin'):
+            return False
+        if user.is_superuser:
+            return True
+
+        required_permission = getattr(view, 'required_admin_permission', None)
+        if not required_permission:
+            return True
+
+        return AdminPermissionGrant.objects.filter(
+            user=user,
+            permission=required_permission,
+        ).exists()
 
 
 class IsVendor(BasePermission):

@@ -9,3 +9,13 @@ media/
 venv/
 env/
 *.log
+
+# Tests
+test/
+tests/
+**/test/
+**/tests/
+**/tests.py
+**/tests_*.py
+**/test_*.py
+**/*_test.py
