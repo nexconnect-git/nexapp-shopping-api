@@ -29,6 +29,7 @@ class UserLoginSerializer(serializers.Serializer):
 
 class MobileOTPRequestSerializer(serializers.Serializer):
     phone = serializers.CharField(max_length=20)
+    email = serializers.EmailField(required=False, allow_blank=True)
 
 
 class MobileOTPVerifySerializer(serializers.Serializer):

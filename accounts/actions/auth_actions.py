@@ -2,6 +2,7 @@
 
 import re
 import uuid
+import django_rq
 from django.contrib.auth import authenticate
 from django.conf import settings
 
@@ -16,6 +17,7 @@ from accounts.serializers.user_serializers import (
     UserProfileSerializer,
 )
 from accounts.services.email_service import EmailService
+from accounts.tasks import send_mobile_otp_email
 
 
 class RegisterAction:
@@ -108,6 +110,7 @@ class RequestMobileOTPAction:
         serializer = MobileOTPRequestSerializer(data=self._data)
         serializer.is_valid(raise_exception=True)
         phone = normalize_phone(serializer.validated_data['phone'])
+        fallback_email = serializer.validated_data.get('email', '').strip()
         customer = UserRepository.get_by_phone(phone, role='customer')
 
         if self._purpose == MobileOTP.PURPOSE_LOGIN and customer is None:
@@ -117,7 +120,10 @@ class RequestMobileOTPAction:
             raise ValueError('An account already exists for this mobile number. Please sign in instead.')
 
         _otp, code = MobileOTP.create_code(phone=phone, purpose=self._purpose)
+        email_queued = self._queue_email_fallback(code, customer, fallback_email)
         payload = {'detail': 'OTP sent successfully.', 'phone': phone}
+        if email_queued:
+            payload['email_fallback_queued'] = True
         if customer is not None:
             payload['user_exists'] = True
         if self._purpose == MobileOTP.PURPOSE_REGISTER:
@@ -125,6 +131,20 @@ class RequestMobileOTPAction:
         if settings.DEBUG:
             payload['dev_otp'] = code
         return payload
+
+    def _queue_email_fallback(self, code: str, customer, fallback_email: str) -> bool:
+        email = ''
+        if self._purpose == MobileOTP.PURPOSE_LOGIN and customer is not None:
+            email = customer.email or ''
+        elif self._purpose == MobileOTP.PURPOSE_REGISTER:
+            email = fallback_email
+
+        if not email:
+            return False
+
+        queue = django_rq.get_queue('default')
+        queue.enqueue(send_mobile_otp_email, email, code, self._purpose)
+        return True
 
 
 class VerifyMobileOTPAction:
