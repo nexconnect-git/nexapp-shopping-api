@@ -20,6 +20,7 @@ from delivery.serializers import DeliveryAssignmentSerializer
 from orders.serializers import OrderSerializer
 from delivery.tasks import check_assignment_timeout, check_stale_assignments
 from delivery.data.assignment_repo import DeliveryAssignmentRepository
+from helpers.validators import validate_image_upload
 
 
 class AcceptDeliveryView(APIView):
@@ -57,6 +58,12 @@ class ConfirmDeliveryView(APIView):
         submitted_otp = str(request.data.get("otp", "")).strip()
         photo = request.FILES.get("photo") or request.FILES.get("delivery_photo")
         transaction_photo = request.FILES.get("transaction_photo")
+        try:
+            validate_image_upload(photo, label="delivery photo")
+            if transaction_photo:
+                validate_image_upload(transaction_photo, label="transaction photo")
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             order = ConfirmDeliveryAction.execute(str(pk), request.user, submitted_otp, photo, transaction_photo=transaction_photo)

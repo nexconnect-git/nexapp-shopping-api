@@ -3,14 +3,14 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 
-from accounts.permissions import IsAdminRole
+from accounts.permissions import IsSuperUser
 from accounts.data.user_repository import UserRepository
 from accounts.serializers.user_serializers import AdminUserSerializer, AdminUserUpdateSerializer
 from accounts.actions.admin_actions import UpdateAccountStatusAction
 
 class AdminUserViewSet(viewsets.ModelViewSet):
     serializer_class = AdminUserSerializer
-    permission_classes = [IsAuthenticated, IsAdminRole]
+    permission_classes = [IsAuthenticated, IsSuperUser]
 
     def get_queryset(self):
         return UserRepository.get_admin_users()

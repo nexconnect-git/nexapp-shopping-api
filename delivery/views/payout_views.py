@@ -10,7 +10,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.actions.audit_actions import CreateAdminAuditLogAction
-from accounts.permissions import IsAdminRole
+from accounts.permissions import HasAdminPermission
 from vendors.models import DeliveryPartnerPayout
 from vendors.serializers import DeliveryPartnerPayoutSerializer
 
@@ -107,7 +107,8 @@ class DeliveryPayoutVerifyCreditView(APIView):
 
 class AdminDeliveryPayoutListView(APIView):
     """GET /api/admin/payouts/delivery/ — list all delivery payouts."""
-    permission_classes = [IsAuthenticated, IsAdminRole]
+    permission_classes = [IsAuthenticated, HasAdminPermission]
+    required_admin_permission = 'finance.manage'
 
     def get(self, request):
         qs = DeliveryPartnerPayout.objects.select_related(
@@ -131,7 +132,8 @@ class AdminDeliveryPayoutListView(APIView):
 
 class AdminDeliveryPayoutDetailView(APIView):
     """GET/PATCH /api/admin/payouts/delivery/<pk>/ — retrieve or update a payout."""
-    permission_classes = [IsAuthenticated, IsAdminRole]
+    permission_classes = [IsAuthenticated, HasAdminPermission]
+    required_admin_permission = 'finance.manage'
 
     def _get(self, pk):
         try:
@@ -165,7 +167,8 @@ class AdminDeliveryPayoutDetailView(APIView):
 
 class AdminDeliveryPayoutScheduleView(APIView):
     """POST /api/admin/payouts/delivery/<pk>/schedule/ — mark payout as scheduled."""
-    permission_classes = [IsAuthenticated, IsAdminRole]
+    permission_classes = [IsAuthenticated, HasAdminPermission]
+    required_admin_permission = 'finance.manage'
 
     def post(self, request, pk):
         try:
@@ -188,7 +191,8 @@ class AdminDeliveryPayoutScheduleView(APIView):
 
 class AdminDeliveryPayoutSendPaymentView(APIView):
     """POST /api/admin/payouts/delivery/<pk>/send-payment/ — mark payment sent."""
-    permission_classes = [IsAuthenticated, IsAdminRole]
+    permission_classes = [IsAuthenticated, HasAdminPermission]
+    required_admin_permission = 'finance.manage'
 
     def post(self, request, pk):
         try:
@@ -215,7 +219,8 @@ class AdminDeliveryPayoutSendPaymentView(APIView):
 
 class AdminDeliveryPayoutForcePaidView(APIView):
     """POST /api/admin/payouts/delivery/<pk>/force-paid/ — force payout to verified."""
-    permission_classes = [IsAuthenticated, IsAdminRole]
+    permission_classes = [IsAuthenticated, HasAdminPermission]
+    required_admin_permission = 'finance.manage'
 
     def post(self, request, pk):
         try:

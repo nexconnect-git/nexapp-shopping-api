@@ -6,7 +6,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.permissions import IsAdminRole
+from accounts.permissions import HasAdminPermission
 from accounts.actions.audit_actions import CreateAdminAuditLogAction
 from vendors.models import VendorPayout
 from vendors.serializers import VendorPayoutSerializer
@@ -20,7 +20,8 @@ class StandardPagination(PageNumberPagination):
 
 class AdminVendorPayoutListView(APIView):
     """GET /api/admin/payouts/vendors/ — list all vendor payouts."""
-    permission_classes = [IsAuthenticated, IsAdminRole]
+    permission_classes = [IsAuthenticated, HasAdminPermission]
+    required_admin_permission = 'finance.manage'
 
     def get(self, request):
         qs = VendorPayout.objects.select_related("vendor").order_by("-period_start")
@@ -42,7 +43,8 @@ class AdminVendorPayoutListView(APIView):
 
 class AdminVendorPayoutDetailView(APIView):
     """GET/PATCH /api/admin/payouts/vendors/<pk>/ — retrieve or update a payout."""
-    permission_classes = [IsAuthenticated, IsAdminRole]
+    permission_classes = [IsAuthenticated, HasAdminPermission]
+    required_admin_permission = 'finance.manage'
 
     def _get(self, pk):
         try:
@@ -76,7 +78,8 @@ class AdminVendorPayoutDetailView(APIView):
 
 class AdminVendorPayoutScheduleView(APIView):
     """POST /api/admin/payouts/vendors/<pk>/schedule/ — mark payout as scheduled."""
-    permission_classes = [IsAuthenticated, IsAdminRole]
+    permission_classes = [IsAuthenticated, HasAdminPermission]
+    required_admin_permission = 'finance.manage'
 
     def post(self, request, pk):
         try:
@@ -99,7 +102,8 @@ class AdminVendorPayoutScheduleView(APIView):
 
 class AdminVendorPayoutSendPaymentView(APIView):
     """POST /api/admin/payouts/vendors/<pk>/send-payment/ — mark payment as sent."""
-    permission_classes = [IsAuthenticated, IsAdminRole]
+    permission_classes = [IsAuthenticated, HasAdminPermission]
+    required_admin_permission = 'finance.manage'
 
     def post(self, request, pk):
         try:
@@ -143,7 +147,8 @@ class AdminVendorPayoutSendPaymentView(APIView):
 
 class AdminVendorPayoutForcePaidView(APIView):
     """POST /api/admin/payouts/vendors/<pk>/force-paid/ — force payout to verified."""
-    permission_classes = [IsAuthenticated, IsAdminRole]
+    permission_classes = [IsAuthenticated, HasAdminPermission]
+    required_admin_permission = 'finance.manage'
 
     def post(self, request, pk):
         try:

@@ -16,7 +16,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import User
-from accounts.permissions import IsAdminRole
+from accounts.permissions import HasAdminPermission
 from accounts.actions.audit_actions import CreateAdminAuditLogAction
 from notifications.models import DeviceToken, Notification
 from notifications.serializers import (
@@ -156,7 +156,8 @@ class AdminNotificationPagination(PageNumberPagination):
 class AdminNotificationListView(APIView):
     """GET /api/admin/notifications/ — list all notifications (admin only)."""
 
-    permission_classes = [IsAuthenticated, IsAdminRole]
+    permission_classes = [IsAuthenticated, HasAdminPermission]
+    required_admin_permission = 'notifications.manage'
 
     def get(self, request):
         """Return a paginated, optionally filtered list of all notifications.
@@ -200,7 +201,8 @@ class AdminNotificationListView(APIView):
 class AdminSendNotificationView(APIView):
     """POST /api/admin/notifications/send/ — send a targeted or broadcast notification."""
 
-    permission_classes = [IsAuthenticated, IsAdminRole]
+    permission_classes = [IsAuthenticated, HasAdminPermission]
+    required_admin_permission = 'notifications.manage'
 
     def post(self, request):
         """Create and deliver a notification to one user or all users.
@@ -277,7 +279,8 @@ class AdminSendNotificationView(APIView):
 class AdminDeleteNotificationView(APIView):
     """DELETE /api/admin/notifications/<pk>/ — delete a notification."""
 
-    permission_classes = [IsAuthenticated, IsAdminRole]
+    permission_classes = [IsAuthenticated, HasAdminPermission]
+    required_admin_permission = 'notifications.manage'
 
     def delete(self, request, pk):  # noqa: ARG002
         """Delete a single notification.

@@ -5,7 +5,8 @@ from django.db import transaction
 from products.models import Product, ProductImage
 from vendors.models import Vendor
 from products.actions.approval import ProductApprovalPolicy
-from .base import BaseAction
+from products.actions.base import BaseAction
+from helpers.validators import validate_image_upload
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,7 @@ class CreateVendorProductAction(BaseAction):
 
 class AddProductImageAction(BaseAction):
     def execute(self, product_id: str, vendor_id: str, image_file, is_primary: bool, is_ai_generated: bool) -> ProductImage:
+        validate_image_upload(image_file, label="product image")
         product = Product.objects.get(pk=product_id, vendor_id=vendor_id)
         existing_count = product.images.count()
 

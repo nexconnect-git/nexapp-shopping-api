@@ -33,6 +33,7 @@ from products.serializers.catalog_serializers import (
     VendorCatalogGrantSerializer,
 )
 from vendors.models import Vendor
+from helpers.validators import validate_image_upload
 
 
 class CatalogPagination(PageNumberPagination):
@@ -129,8 +130,10 @@ class AdminCatalogProductImagesView(APIView):
         if not product:
             return Response({"error": "Catalog product not found."}, status=status.HTTP_404_NOT_FOUND)
         image_file = request.FILES.get("image")
-        if not image_file:
-            return Response({"image": ["This field is required."]}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            validate_image_upload(image_file, label="catalog image")
+        except ValueError as exc:
+            return Response({"image": [str(exc)]}, status=status.HTTP_400_BAD_REQUEST)
         is_primary = str(request.data.get("is_primary", "false")).lower() == "true"
         if is_primary or not product.images.exists():
             product.images.update(is_primary=False)

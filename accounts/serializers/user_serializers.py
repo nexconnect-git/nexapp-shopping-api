@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
+from helpers.validators import validate_image_upload
 
 User = get_user_model()
 
@@ -46,6 +47,14 @@ class UserProfileSerializer(serializers.ModelSerializer):
                   'force_password_change', 'is_superuser', 'created_at', 'updated_at']
         read_only_fields = ['id', 'username', 'role', 'is_verified', 'is_active',
                             'force_password_change', 'is_superuser', 'created_at', 'updated_at']
+
+    def validate_avatar(self, value):
+        if value:
+            try:
+                validate_image_upload(value, max_size_mb=3, label="avatar")
+            except ValueError as exc:
+                raise serializers.ValidationError(str(exc)) from exc
+        return value
 
 
 class ChangePasswordSerializer(serializers.Serializer):

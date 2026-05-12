@@ -19,3 +19,4 @@ tests/
 **/tests_*.py
 **/test_*.py
 **/*_test.py
+!helpers/tests.py

@@ -8,7 +8,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
-from accounts.permissions import IsAdminRole
+from accounts.permissions import HasAdminPermission
 
 import django_rq
 
@@ -111,7 +111,8 @@ class AdminScheduledTaskListCreateView(APIView):
     GET  /api/admin/scheduled-tasks/  — list all scheduled (pending) jobs
     POST /api/admin/scheduled-tasks/  — enqueue or schedule a new job
     """
-    permission_classes = [IsAuthenticated, IsAdminRole]
+    permission_classes = [IsAuthenticated, HasAdminPermission]
+    required_admin_permission = 'automation.manage'
 
     def get(self, request):
         try:
@@ -244,7 +245,8 @@ class AdminScheduledTaskCancelView(APIView):
     """
     DELETE /api/admin/scheduled-tasks/<job_id>/ — cancel a scheduled job
     """
-    permission_classes = [IsAuthenticated, IsAdminRole]
+    permission_classes = [IsAuthenticated, HasAdminPermission]
+    required_admin_permission = 'automation.manage'
 
     def delete(self, request, job_id):
         try:

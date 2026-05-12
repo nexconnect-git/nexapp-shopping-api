@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from helpers.validators import validate_pan, validate_gstin, validate_ifsc
+from helpers.validators import validate_pan, validate_gstin, validate_ifsc, validate_document_upload
 from vendors.models import (
     VendorOnboarding, VendorBankDetails, VendorDocument,
     VendorServiceableArea, VendorHoliday
@@ -95,8 +95,15 @@ class VendorDocumentSerializer(serializers.ModelSerializer):
 
     def get_verified_by_name(self, obj) -> str | None:
         if obj.verified_by:
-            return (f"{obj.verified_by.first_name} {obj.reviewed_by.last_name}".strip() or obj.verified_by.username)
+            return (f"{obj.verified_by.first_name} {obj.verified_by.last_name}".strip() or obj.verified_by.username)
         return None
+
+    def validate_file(self, value):
+        try:
+            validate_document_upload(value, label="vendor document")
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+        return value
 
     def create(self, validated_data):
         file_obj = validated_data.get("file")

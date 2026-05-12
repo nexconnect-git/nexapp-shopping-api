@@ -1,3 +1,5 @@
+from datetime import time
+
 from django.utils import timezone
 
 
@@ -11,8 +13,8 @@ def get_vendor_availability(vendor, current_dt=None):
     if hasattr(vendor, "is_accepting_orders") and not vendor.is_accepting_orders:
         return False, "Temporarily not accepting orders"
 
-    opening_time = getattr(vendor, "opening_time", None)
-    closing_time = getattr(vendor, "closing_time", None)
+    opening_time = _coerce_time(getattr(vendor, "opening_time", None))
+    closing_time = _coerce_time(getattr(vendor, "closing_time", None))
     if not opening_time or not closing_time:
         return True, "Open now"
 
@@ -32,3 +34,18 @@ def get_vendor_availability(vendor, current_dt=None):
 
 def is_vendor_open_now(vendor, current_dt=None):
     return get_vendor_availability(vendor, current_dt=current_dt)[0]
+
+
+def _coerce_time(value):
+    if isinstance(value, time):
+        return value.replace(tzinfo=None)
+    if isinstance(value, str):
+        normalized = value.strip()
+        if not normalized:
+            return None
+        for fmt in ("%H:%M:%S", "%H:%M"):
+            try:
+                return timezone.datetime.strptime(normalized, fmt).time()
+            except ValueError:
+                continue
+    return None
