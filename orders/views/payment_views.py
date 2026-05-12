@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.views.decorators.csrf import csrf_exempt
+from django.utils import timezone
 from django.utils.decorators import method_decorator
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -16,10 +17,24 @@ from accounts.models import Address
 from helpers.delivery_quotes import quote_vendor_delivery
 from orders.actions.payment_actions import CreateRazorpayOrderAction, VerifyRazorpayPaymentAction
 from orders.data.order_repo import OrderRepository
+from orders.models import Cart, Coupon, CouponUsage, PlatformSetting
 from orders.serializers import OrderSerializer
 from orders.services.razorpay_service import RazorpayService
 
 logger = logging.getLogger(__name__)
+
+
+class PaymentMethodsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        setting = PlatformSetting.get_setting()
+        methods = setting.normalized_payment_methods()
+        return Response({
+            'enabled_payment_methods': methods,
+            'cod_enabled': setting.PAYMENT_METHOD_COD in methods,
+            'online_enabled': any(method.startswith('razorpay_') for method in methods),
+        })
 
 
 class InitiateCheckoutPaymentView(APIView):
@@ -39,12 +54,12 @@ class InitiateCheckoutPaymentView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        if not getattr(settings, 'RAZORPAY_KEY_ID', ''):
-            return Response({'error': 'Razorpay is not configured.'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        platform_setting = PlatformSetting.get_setting()
+        if not platform_setting.is_online_payment_enabled():
+            return Response({'error': 'Online payment is currently disabled.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        from orders.models import Cart
-        from orders.models.setting import PlatformSetting
-        from orders.models.coupon import Coupon
+        if not getattr(settings, 'RAZORPAY_KEY_ID', '') or not getattr(settings, 'RAZORPAY_KEY_SECRET', ''):
+            return Response({'error': 'Razorpay is not configured.'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
         try:
             cart = Cart.objects.prefetch_related('items__product__vendor').get(user=request.user)
@@ -115,12 +130,23 @@ class InitiateCheckoutPaymentView(APIView):
         if coupon_code:
             try:
                 coupon = Coupon.objects.get(code=coupon_code, is_active=True)
-                if coupon.discount_type == 'percentage':
-                    coupon_discount = (cart_total * coupon.discount_value / 100).quantize(Decimal('0.01'))
+                now = timezone.now()
+                if coupon.valid_from > now:
+                    return Response({'error': 'Coupon is not yet valid.'}, status=status.HTTP_400_BAD_REQUEST)
+                if coupon.valid_until and coupon.valid_until < now:
+                    return Response({'error': 'Coupon has expired.'}, status=status.HTTP_400_BAD_REQUEST)
+                if coupon.usage_limit and coupon.used_count >= coupon.usage_limit:
+                    return Response({'error': 'Coupon usage limit reached.'}, status=status.HTTP_400_BAD_REQUEST)
+                if CouponUsage.objects.filter(coupon=coupon, user=request.user).count() >= coupon.per_user_limit:
+                    return Response({'error': 'You have already used this coupon.'}, status=status.HTTP_400_BAD_REQUEST)
+                if cart_total < coupon.min_order_amount:
+                    return Response({'error': f'Minimum order amount is Rs.{coupon.min_order_amount}.'}, status=status.HTTP_400_BAD_REQUEST)
+                if coupon.discount_type == 'free_delivery':
+                    delivery_fee = Decimal('0')
                 else:
-                    coupon_discount = min(coupon.discount_value, cart_total)
+                    coupon_discount = coupon.calculate_discount(cart_total).quantize(Decimal('0.01'))
             except Coupon.DoesNotExist:
-                pass
+                return Response({'error': 'Invalid coupon code.'}, status=status.HTTP_400_BAD_REQUEST)
 
         # Wallet deduction
         wallet_amount = Decimal(str(request.data.get('wallet_amount', 0) or 0))

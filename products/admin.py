@@ -24,9 +24,9 @@ class CatalogProductImageInline(admin.TabularInline):
 
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
-    list_display = ('name', 'parent', 'is_active', 'display_order')
+    list_display = ('name', 'parent', 'icon_name', 'is_active', 'show_in_customer_ui', 'display_order')
     list_filter = ('is_active',)
-    search_fields = ('name',)
+    search_fields = ('name', 'icon_name')
     prepopulated_fields = {'slug': ('name',)}
 
 

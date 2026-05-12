@@ -8,6 +8,11 @@ class Category(models.Model):
     slug = models.SlugField(unique=True)
     description = models.TextField(blank=True)
     image = models.ImageField(upload_to='categories/', blank=True, null=True)
+    icon_name = models.CharField(
+        max_length=80,
+        blank=True,
+        help_text="Material icon name used by customer apps when no category image is configured.",
+    )
     parent = models.ForeignKey(
         'self',
         on_delete=models.CASCADE,

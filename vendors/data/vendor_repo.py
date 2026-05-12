@@ -1,4 +1,4 @@
-from django.db.models import BooleanField, Count, DecimalField, Exists, F, OuterRef, Q, Subquery, Sum, Value
+from django.db.models import BooleanField, Count, DecimalField, Exists, F, OuterRef, Prefetch, Q, Subquery, Sum, Value
 from django.db.models.functions import Coalesce
 
 from products.models import Product
@@ -26,8 +26,13 @@ class VendorRepository(BaseRepository):
             qs = qs.filter(is_featured=is_featured.lower() == "true")
         if category:
             qs = qs.filter(
-                Q(products__category__slug=category) | 
-                Q(products__category__parent__slug=category)
+                Q(products__category__slug=category) |
+                Q(products__category__name__iexact=category) |
+                Q(products__category__parent__slug=category) |
+                Q(products__category__parent__name__iexact=category),
+                products__status="active",
+                products__is_available=True,
+                products__stock__gt=0,
             ).distinct()
         return qs
 
@@ -53,6 +58,20 @@ class VendorRepository(BaseRepository):
         if state:
             qs = qs.filter(state__iexact=state)
         return qs
+
+    def with_available_products(self, queryset):
+        products = (
+            Product.objects.filter(
+                approval_status=Product.APPROVAL_STATUS_APPROVED,
+                status="active",
+                is_available=True,
+                stock__gt=0,
+            )
+            .select_related("category", "catalog_product")
+            .prefetch_related("images", "catalog_product__images")
+            .order_by("category__display_order", "category__name", "name")
+        )
+        return queryset.prefetch_related(Prefetch("products", queryset=products, to_attr="available_products"))
 
     def annotate_previous_order_flag(self, queryset, customer):
         if not customer or not getattr(customer, "is_authenticated", False):

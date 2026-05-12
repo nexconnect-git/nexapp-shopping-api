@@ -15,7 +15,6 @@ from products.models import Product
 from vendors.models import Vendor
 
 
-CUSTOMER_DISCOVERY_RADIUS_KM = 10.0
 DEFAULT_MAX_FAR_DISTANCE_KM = 20.0
 
 
@@ -38,6 +37,7 @@ class DeliveryQuote:
     is_serviceable: bool
     serviceability_error: str
     max_supported_distance_km: float
+    instant_radius_km: float
 
     def as_dict(self) -> dict:
         return {
@@ -58,6 +58,7 @@ class DeliveryQuote:
             "is_serviceable": self.is_serviceable,
             "serviceability_error": self.serviceability_error,
             "max_supported_distance_km": round(self.max_supported_distance_km, 2),
+            "instant_radius_km": round(self.instant_radius_km, 2),
             "far_order_eta_label": self.estimated_delivery_label,
         }
 
@@ -86,13 +87,14 @@ def is_same_state(vendor: Vendor, address: Address) -> bool:
 
 
 def get_max_supported_distance_km(address: Address, vendor: Vendor) -> float:
+    vendor_max_distance = float(vendor.max_delivery_radius_km or DEFAULT_MAX_FAR_DISTANCE_KM)
     zone = DeliveryZone.objects.filter(
         is_active=True,
         city__iexact=address.city or vendor.city,
     ).order_by("radius_km").first()
     if zone:
-        return float(zone.max_delivery_distance_km)
-    return DEFAULT_MAX_FAR_DISTANCE_KM
+        return min(float(zone.max_delivery_distance_km), vendor_max_distance)
+    return vendor_max_distance
 
 
 def _parse_weight_to_kg(weight: str | None) -> float:
@@ -166,8 +168,9 @@ def quote_vendor_delivery(
 
     same_state = is_same_state(vendor, address)
     max_supported_distance_km = get_max_supported_distance_km(address, vendor)
-    within_instant_radius = distance_km <= CUSTOMER_DISCOVERY_RADIUS_KM
-    is_far_delivery = distance_km > CUSTOMER_DISCOVERY_RADIUS_KM
+    instant_radius_km = float(vendor.instant_delivery_radius_km or 0)
+    within_instant_radius = distance_km <= instant_radius_km
+    is_far_delivery = distance_km > instant_radius_km
 
     product_list = list(products or [])
     vehicle_type, vehicle_reason = determine_vehicle_for_products(product_list, quantities)
@@ -221,6 +224,7 @@ def quote_vendor_delivery(
                 f"'{vendor.state or 'Unknown'}' while your selected address is in '{address.state or 'Unknown'}'."
             ),
             max_supported_distance_km=max_supported_distance_km,
+            instant_radius_km=instant_radius_km,
         )
 
     if distance_km > max_supported_distance_km:
@@ -244,6 +248,7 @@ def quote_vendor_delivery(
                 f"This store is {round(distance_km, 1)} km away, beyond the current supported delivery range."
             ),
             max_supported_distance_km=max_supported_distance_km,
+            instant_radius_km=instant_radius_km,
         )
 
     return DeliveryQuote(
@@ -264,4 +269,5 @@ def quote_vendor_delivery(
         is_serviceable=True,
         serviceability_error="",
         max_supported_distance_km=max_supported_distance_km,
+        instant_radius_km=instant_radius_km,
     )

@@ -1,7 +1,23 @@
 """Serializers for order issue models."""
 
 from rest_framework import serializers
-from orders.models import IssueMessage, OrderIssue
+from orders.models import IssueMessage, OrderIssue, OrderIssueAttachment
+
+
+class OrderIssueAttachmentSerializer(serializers.ModelSerializer):
+    """Serializer for proof files attached to an order issue."""
+
+    uploaded_by_name = serializers.CharField(source="uploaded_by.get_full_name", read_only=True)
+
+    class Meta:
+        model = OrderIssueAttachment
+        fields = [
+            "id", "issue", "uploaded_by", "uploaded_by_name", "file",
+            "content_type", "created_at",
+        ]
+        read_only_fields = [
+            "id", "issue", "uploaded_by", "uploaded_by_name", "content_type", "created_at",
+        ]
 
 
 class IssueMessageSerializer(serializers.ModelSerializer):
@@ -25,6 +41,7 @@ class OrderIssueSerializer(serializers.ModelSerializer):
     """Full serializer for an order issue with nested message thread."""
 
     messages = IssueMessageSerializer(many=True, read_only=True)
+    attachments = OrderIssueAttachmentSerializer(many=True, read_only=True)
     customer_name = serializers.CharField(source="customer.get_full_name", read_only=True)
     customer_username = serializers.CharField(source="customer.username", read_only=True)
     order_number = serializers.CharField(source="order.order_number", read_only=True)
@@ -37,7 +54,7 @@ class OrderIssueSerializer(serializers.ModelSerializer):
             "id", "order", "order_number", "customer", "customer_name", "customer_username",
             "issue_type", "issue_type_display", "description", "status", "status_display",
             "admin_notes", "refund_amount", "refund_method", "resolved_by", "resolved_at",
-            "created_at", "updated_at", "messages",
+            "created_at", "updated_at", "messages", "attachments",
         ]
         read_only_fields = [
             "id", "customer", "customer_name", "customer_username", "order_number",

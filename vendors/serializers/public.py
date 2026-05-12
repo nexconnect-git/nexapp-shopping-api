@@ -1,6 +1,8 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 from helpers.vendor_hours import get_vendor_availability, is_vendor_open_now
+from products.models import Product
+from products.serializers.category_serializers import CategorySerializer
 from vendors.models import Vendor
 
 User = get_user_model()
@@ -53,9 +55,36 @@ class VendorSerializer(serializers.ModelSerializer):
     def get_availability_note(self, obj) -> str:
         return get_vendor_availability(obj)[1]
 
+
+class VendorListProductSerializer(serializers.ModelSerializer):
+    category = CategorySerializer(read_only=True)
+    primary_image = serializers.SerializerMethodField()
+    vendor_name = serializers.CharField(source="vendor.store_name", read_only=True)
+
+    class Meta:
+        model = Product
+        fields = [
+            "id", "category", "name", "slug", "description", "price",
+            "compare_price", "brand", "unit", "stock", "weight",
+            "average_rating", "total_ratings", "primary_image", "vendor_name",
+        ]
+
+    def get_primary_image(self, obj) -> str | None:
+        primary = obj.images.filter(is_primary=True).first() or obj.images.first()
+        if not primary and obj.catalog_product_id:
+            primary = obj.catalog_product.images.filter(is_primary=True).first() or obj.catalog_product.images.first()
+        if not primary:
+            return None
+        request = self.context.get("request")
+        if request:
+            return request.build_absolute_uri(primary.image.url)
+        return primary.image.url
+
+
 class VendorListSerializer(serializers.ModelSerializer):
     is_open_now = serializers.SerializerMethodField()
     availability_note = serializers.SerializerMethodField()
+    products = serializers.SerializerMethodField()
     distance_km = serializers.FloatField(read_only=True, required=False)
     estimated_delivery_minutes = serializers.IntegerField(read_only=True, required=False)
     matched_products_preview = serializers.ListField(child=serializers.CharField(), read_only=True)
@@ -81,6 +110,7 @@ class VendorListSerializer(serializers.ModelSerializer):
             "far_order_eta_label", "vehicle_type", "vehicle_reason",
             "is_far_delivery", "requires_far_delivery_confirmation",
             "within_instant_radius", "matched_products_preview", "has_previously_ordered",
+            "products",
         ]
 
     def get_is_open_now(self, obj) -> bool:
@@ -88,6 +118,22 @@ class VendorListSerializer(serializers.ModelSerializer):
 
     def get_availability_note(self, obj) -> str:
         return get_vendor_availability(obj)[1]
+
+    def get_products(self, obj) -> list[dict]:
+        products = getattr(obj, "available_products", None)
+        if products is None:
+            products = (
+                obj.products.filter(
+                    approval_status=Product.APPROVAL_STATUS_APPROVED,
+                    status="active",
+                    is_available=True,
+                    stock__gt=0,
+                )
+                .select_related("category", "catalog_product")
+                .prefetch_related("images", "catalog_product__images")
+                .order_by("category__display_order", "category__name", "name")
+            )
+        return VendorListProductSerializer(products, many=True, context=self.context).data
 
 class VendorRegistrationSerializer(serializers.Serializer):
     username = serializers.CharField()
@@ -103,8 +149,8 @@ class VendorRegistrationSerializer(serializers.Serializer):
     city = serializers.CharField(max_length=100)
     state = serializers.CharField(max_length=100)
     postal_code = serializers.CharField(max_length=10)
-    latitude = serializers.DecimalField(max_digits=9, decimal_places=6)
-    longitude = serializers.DecimalField(max_digits=9, decimal_places=6)
+    latitude = serializers.DecimalField(max_digits=11, decimal_places=8)
+    longitude = serializers.DecimalField(max_digits=11, decimal_places=8)
 
     def validate_username(self, value: str) -> str:
         if User.objects.filter(username=value).exists():

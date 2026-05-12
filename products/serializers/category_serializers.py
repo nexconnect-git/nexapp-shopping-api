@@ -13,15 +13,15 @@ class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
         fields = [
-            "id", "name", "slug", "description", "image", "parent",
+            "id", "name", "slug", "description", "image", "icon_name", "parent",
             "parent_name", "is_active", "show_in_customer_ui", "display_order",
             "children", "subcategory_count", "created_at",
         ]
         read_only_fields = ["id", "created_at"]
 
     def get_children(self, obj) -> list:
-        """Return serialized active child categories."""
-        children = obj.children.filter(is_active=True)
+        """Return serialized active customer-visible child categories."""
+        children = obj.children.filter(is_active=True, show_in_customer_ui=True)
         return CategorySerializer(children, many=True).data
 
     def get_parent_name(self, obj) -> str | None:

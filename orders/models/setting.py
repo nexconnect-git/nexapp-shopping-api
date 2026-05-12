@@ -3,7 +3,25 @@ from django.db import models
 
 
 class PlatformSetting(models.Model):
+    PAYMENT_METHOD_COD = 'cod'
+    PAYMENT_METHOD_UPI = 'razorpay_upi'
+    PAYMENT_METHOD_CARD = 'razorpay_card'
+    PAYMENT_METHOD_WALLET = 'razorpay_wallet'
+    PAYMENT_METHOD_NETBANKING = 'razorpay_netbanking'
+    DEFAULT_PAYMENT_METHODS = [
+        PAYMENT_METHOD_UPI,
+        PAYMENT_METHOD_CARD,
+        PAYMENT_METHOD_WALLET,
+        PAYMENT_METHOD_NETBANKING,
+        PAYMENT_METHOD_COD,
+    ]
+
     upi_id = models.CharField(max_length=100, default='nexconnect@ybl')
+    enabled_payment_methods = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='Enabled customer checkout payment method keys.'
+    )
 
     # Delivery fee rate card
     delivery_base_fee = models.DecimalField(
@@ -35,4 +53,18 @@ class PlatformSetting(models.Model):
     @classmethod
     def get_setting(cls):
         setting, _ = cls.objects.get_or_create(id=1)
+        if not setting.enabled_payment_methods:
+            setting.enabled_payment_methods = cls.DEFAULT_PAYMENT_METHODS.copy()
+            setting.save(update_fields=['enabled_payment_methods'])
         return setting
+
+    def normalized_payment_methods(self):
+        valid = set(self.DEFAULT_PAYMENT_METHODS)
+        methods = self.enabled_payment_methods or self.DEFAULT_PAYMENT_METHODS
+        return [method for method in methods if method in valid]
+
+    def is_cod_enabled(self):
+        return self.PAYMENT_METHOD_COD in self.normalized_payment_methods()
+
+    def is_online_payment_enabled(self):
+        return any(method.startswith('razorpay_') for method in self.normalized_payment_methods())

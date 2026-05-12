@@ -16,6 +16,7 @@ urlpatterns = [
     path('cart/clear/', views.ClearCartView.as_view(), name='cart-clear'),
     path('cancellation-policy/', views.CancellationPolicyView.as_view(), name='cancellation-policy'),
     path('delivery-fee-preview/', views.DeliveryFeePreviewView.as_view(), name='delivery-fee-preview'),
+    path('payment-methods/', views.PaymentMethodsView.as_view(), name='payment-methods'),
     path('initiate-checkout-payment/', views.InitiateCheckoutPaymentView.as_view(), name='initiate-checkout-payment'),
     path('create/', views.CreateOrderView.as_view(), name='order-create'),
     path('list/', views.OrderListView.as_view(), name='order-list'),
@@ -33,4 +34,5 @@ urlpatterns = [
     path('issues/', views.CustomerOrderIssueListCreateView.as_view(), name='issue-list'),
     path('issues/<uuid:pk>/', views.CustomerOrderIssueDetailView.as_view(), name='issue-detail'),
     path('issues/<uuid:pk>/messages/', views.IssueMessageCreateView.as_view(), name='issue-message'),
+    path('issues/<uuid:pk>/attachments/', views.IssueAttachmentCreateView.as_view(), name='issue-attachment'),
 ]

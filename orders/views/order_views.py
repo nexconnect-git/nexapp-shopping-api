@@ -4,6 +4,7 @@ from io import BytesIO
 
 import qrcode
 import qrcode.constants
+from django.db import transaction
 from django.db.models import Avg
 from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
@@ -15,7 +16,7 @@ from helpers.delivery_quotes import DeliveryServiceabilityError, FarDeliveryConf
 from orders.actions.ordering import CreateOrdersFromCartAction, CancelOrderAction
 from orders.data.cart_repo import CartRepository
 from orders.data.order_repo import OrderRepository
-from orders.models import Cart, Order, OrderRating
+from orders.models import Cart, Order, OrderRating, PlatformSetting
 from orders.serializers import (
     CreateOrderSerializer, OrderSerializer, OrderTrackingSerializer, OrderRatingSerializer,
 )
@@ -28,19 +29,67 @@ class CreateOrderView(APIView):
         serializer = CreateOrderSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         vd = serializer.validated_data
-        try:
-            action = CreateOrdersFromCartAction()
-            created_orders = action.execute(
-                user=request.user,
-                delivery_address_id=vd["delivery_address_id"],
-                payment_method=vd.get("payment_method", "cod"),
-                notes=vd.get("notes", ""),
-                coupon_code=vd.get("coupon_code", "").strip().upper(),
-                wallet_amount=vd.get("wallet_amount", Decimal("0")),
-                loyalty_points=vd.get("loyalty_points", 0),
-                scheduled_for=vd.get("scheduled_for"),
-                confirm_far_delivery=vd.get("confirm_far_delivery", False),
+        rz_order_id = vd.get("razorpay_order_id", "").strip()
+        rz_payment_id = vd.get("razorpay_payment_id", "").strip()
+        rz_signature = vd.get("razorpay_signature", "").strip()
+        has_razorpay_proof = bool(rz_order_id and rz_payment_id and rz_signature)
+        payment_method = vd.get("payment_method", "cod")
+
+        platform_setting = PlatformSetting.get_setting()
+        if payment_method == "cod" and not platform_setting.is_cod_enabled():
+            return Response(
+                {"error": "Cash on delivery is currently disabled."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
+        if payment_method == "razorpay" and not platform_setting.is_online_payment_enabled():
+            return Response(
+                {"error": "Online payment is currently disabled."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if payment_method == "razorpay" and not has_razorpay_proof:
+            return Response(
+                {"error": "Online payment was not completed. Please finish payment before placing the order."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if has_razorpay_proof:
+            from orders.services.razorpay_service import RazorpayService
+            if not RazorpayService().verify_payment_signature(
+                razorpay_order_id=rz_order_id,
+                razorpay_payment_id=rz_payment_id,
+                razorpay_signature=rz_signature,
+            ):
+                return Response(
+                    {"error": "Payment verification failed. Please try payment again."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        try:
+            with transaction.atomic():
+                action = CreateOrdersFromCartAction()
+                created_orders = action.execute(
+                    user=request.user,
+                    delivery_address_id=vd["delivery_address_id"],
+                    payment_method=payment_method,
+                    notes=vd.get("notes", ""),
+                    coupon_code=vd.get("coupon_code", "").strip().upper(),
+                    wallet_amount=vd.get("wallet_amount", Decimal("0")),
+                    loyalty_points=vd.get("loyalty_points", 0),
+                    scheduled_for=vd.get("scheduled_for"),
+                    confirm_far_delivery=vd.get("confirm_far_delivery", False),
+                )
+
+                if has_razorpay_proof:
+                    Order.objects.filter(pk__in=[o.pk for o in created_orders]).update(
+                        razorpay_order_id=rz_order_id,
+                        razorpay_payment_id=rz_payment_id,
+                        is_payment_verified=True,
+                    )
+                    for order in created_orders:
+                        order.razorpay_order_id = rz_order_id
+                        order.razorpay_payment_id = rz_payment_id
+                        order.is_payment_verified = True
         except FarDeliveryConfirmationRequired as exc:
             return Response(
                 {
@@ -61,33 +110,6 @@ class CreateOrderView(APIView):
             )
         except ValueError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-
-        # If Razorpay payment proof was provided (new initiate-first flow),
-        # verify the signature and mark all created orders as paid.
-        rz_order_id = vd.get("razorpay_order_id", "").strip()
-        rz_payment_id = vd.get("razorpay_payment_id", "").strip()
-        rz_signature = vd.get("razorpay_signature", "").strip()
-
-        if rz_order_id and rz_payment_id and rz_signature:
-            from orders.services.razorpay_service import RazorpayService
-            valid = RazorpayService().verify_payment_signature(
-                razorpay_order_id=rz_order_id,
-                razorpay_payment_id=rz_payment_id,
-                razorpay_signature=rz_signature,
-            )
-            if valid:
-                Order.objects.filter(pk__in=[o.pk for o in created_orders]).update(
-                    razorpay_order_id=rz_order_id,
-                    razorpay_payment_id=rz_payment_id,
-                    is_payment_verified=True,
-                )
-                for o in created_orders:
-                    o.is_payment_verified = True
-            else:
-                import logging as _log
-                _log.getLogger(__name__).warning(
-                    "Invalid Razorpay signature on order creation for user %s", request.user.id
-                )
 
         return Response(OrderSerializer(created_orders, many=True).data, status=status.HTTP_201_CREATED)
 
@@ -311,7 +333,7 @@ class DeliveryFeePreviewView(APIView):
             if quote.requires_far_delivery_confirmation:
                 far_delivery_quotes.append(payload)
 
-        total = sum(Decimal(f["delivery_fee"]) for f in fees)
+        total = sum((Decimal(f["delivery_fee"]) for f in fees), Decimal("0.00"))
         return Response(
             {
                 "fees": fees,

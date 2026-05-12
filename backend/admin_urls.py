@@ -58,6 +58,8 @@ from products.views import (
     AdminProductDetailView,
 )
 from orders.views import (
+    AdminBannerDetailView,
+    AdminBannerListCreateView,
     AdminOrderListView,
     AdminOrderDetailView,
     AdminCouponViewSet,
@@ -132,6 +134,8 @@ urlpatterns = [
     # Categories
     path('categories/', AdminCategoryListCreateView.as_view(), name='admin-categories'),
     path('categories/<uuid:pk>/', AdminCategoryDetailView.as_view(), name='admin-category-detail'),
+    path('banners/', AdminBannerListCreateView.as_view(), name='admin-banners'),
+    path('banners/<uuid:pk>/', AdminBannerDetailView.as_view(), name='admin-banner-detail'),
     path('catalog-products/', AdminCatalogProductListCreateView.as_view(), name='admin-catalog-products'),
     path('catalog-products/<uuid:pk>/', AdminCatalogProductDetailView.as_view(), name='admin-catalog-product-detail'),
     path('catalog-products/<uuid:pk>/images/', AdminCatalogProductImagesView.as_view(), name='admin-catalog-product-images'),

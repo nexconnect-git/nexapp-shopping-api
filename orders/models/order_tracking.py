@@ -7,8 +7,8 @@ class OrderTracking(models.Model):
     order = models.ForeignKey('orders.Order', on_delete=models.CASCADE, related_name='tracking')
     status = models.CharField(max_length=20)
     description = models.CharField(max_length=255)
-    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
-    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    latitude = models.DecimalField(max_digits=11, decimal_places=8, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=11, decimal_places=8, null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
 
     class Meta:

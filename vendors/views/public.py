@@ -10,7 +10,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.models import Address
 from accounts.serializers import UserProfileSerializer
-from helpers.delivery_quotes import CUSTOMER_DISCOVERY_RADIUS_KM, quote_vendor_delivery
+from helpers.delivery_quotes import quote_vendor_delivery
 from helpers.vendor_hours import is_vendor_open_now
 from products.models import Product
 from products.serializers import ProductSerializer
@@ -91,6 +91,7 @@ def _serialize_vendor_cards(request, vendors, address: Address | None, product_q
             payload.setdefault("is_serviceable", True)
             payload.setdefault("serviceability_error", "")
             payload.setdefault("max_supported_distance_km", 0)
+            payload.setdefault("instant_radius_km", 0)
 
         payload["has_previously_ordered"] = bool(getattr(vendor, "has_previously_ordered", False))
         cards.append(payload)
@@ -155,6 +156,7 @@ class VendorListView(APIView):
 
         if getattr(request.user, "is_authenticated", False):
             vendors = repo.annotate_previous_order_flag(vendors, request.user)
+        vendors = repo.with_available_products(vendors)
 
         cards = _serialize_vendor_cards(request, list(vendors.distinct()), address, product_query=product_query or search)
         cards = [card for card in cards if card.get("is_serviceable", True)]
@@ -163,6 +165,14 @@ class VendorListView(APIView):
             cards = [card for card in cards if card.get("within_instant_radius")]
         elif search_mode == "global_item":
             cards = [card for card in cards if card.get("matched_products_preview")]
+
+        if search_mode == "nearby" or category:
+            cards.sort(
+                key=lambda item: (
+                    item.get("distance_km") if item.get("distance_km") is not None else 999999,
+                    item.get("store_name", "").lower(),
+                )
+            )
 
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(cards, request)
@@ -181,7 +191,12 @@ class VendorDetailView(generics.RetrieveAPIView):
     def retrieve(self, request, *args, **kwargs):
         vendor = self.get_object()
         vendor_data = VendorSerializer(vendor, context={"request": request}).data
-        available_products = VendorProductRepository().filter(vendor=vendor, is_available=True)
+        available_products = VendorProductRepository().filter(
+            vendor=vendor,
+            status="active",
+            is_available=True,
+            stock__gt=0,
+        )
         vendor_data["products"] = ProductSerializer(
             available_products,
             many=True,

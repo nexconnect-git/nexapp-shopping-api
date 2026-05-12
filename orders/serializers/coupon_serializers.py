@@ -27,7 +27,8 @@ class CouponSerializer(serializers.ModelSerializer):
             "min_order_amount", "max_discount_amount", "vendor", "vendor_name",
             "is_active", "usage_limit", "per_user_limit", "used_count",
             "usage_count", "revenue_influenced", "is_expired", "status_label",
-            "health_warnings", "valid_from", "valid_until", "created_at",
+            "health_warnings", "valid_from", "valid_until", "display_section",
+            "badge_text", "icon_name", "accent_color", "display_order", "created_at",
         ]
         read_only_fields = ["id", "used_count", "created_at", "vendor_name"]
 

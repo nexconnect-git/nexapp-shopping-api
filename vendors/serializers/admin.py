@@ -49,8 +49,8 @@ class VendorFullOnboardSerializer(serializers.Serializer):
     city = serializers.CharField(max_length=100, required=False, default="", allow_blank=True)
     state = serializers.CharField(max_length=100, required=False, default="", allow_blank=True)
     postal_code = serializers.CharField(max_length=10, required=False, default="", allow_blank=True)
-    latitude = serializers.DecimalField(max_digits=9, decimal_places=6, required=False, default=0)
-    longitude = serializers.DecimalField(max_digits=9, decimal_places=6, required=False, default=0)
+    latitude = serializers.DecimalField(max_digits=11, decimal_places=8, required=False, default=0)
+    longitude = serializers.DecimalField(max_digits=11, decimal_places=8, required=False, default=0)
     gst_registered = serializers.BooleanField(default=False)
     
     # Step 3

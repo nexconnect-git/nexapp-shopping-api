@@ -1,10 +1,12 @@
 from unittest.mock import patch
 
 from django.test import TestCase
-from django.urls import reverse
 from rest_framework.test import APIClient
 
 from accounts.models import User
+from accounts.models.address import Address
+from orders.models import Cart, CartItem
+from products.models import Product
 from vendors.models import Vendor
 
 

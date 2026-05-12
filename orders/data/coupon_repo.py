@@ -16,12 +16,12 @@ class CouponRepository:
             Coupon.objects.filter(is_active=True, valid_from__lte=now)
             .filter(Q(valid_until__isnull=True) | Q(valid_until__gte=now))
             .filter(Q(usage_limit__isnull=True) | Q(used_count__lt=F("usage_limit")))
-            .order_by("-created_at")
+            .order_by("display_order", "-created_at")
         )
 
     @staticmethod
     def get_all_admin():
-        return Coupon.objects.select_related("vendor").order_by("-created_at")
+        return Coupon.objects.select_related("vendor").order_by("display_order", "-created_at")
 
     @staticmethod
     def get_user_usage_count(coupon, user):

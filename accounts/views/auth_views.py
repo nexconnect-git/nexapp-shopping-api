@@ -3,12 +3,14 @@
 import hmac
 
 from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist
 from django_ratelimit.decorators import ratelimit
 from django.utils.decorators import method_decorator
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -34,7 +36,7 @@ class RegisterView(APIView):
     def post(self, request):
         try:
             result = RegisterAction(data=request.data).execute()
-            refresh_token = result['tokens'].pop('refresh')
+            refresh_token = result['tokens']['refresh']
             response = Response(result, status=status.HTTP_201_CREATED)
             set_refresh_cookie(response, refresh_token)
             return response
@@ -54,7 +56,7 @@ class LoginView(APIView):
 
         try:
             result = LoginAction(username=username, password=password).execute()
-            refresh_token = result['tokens'].pop('refresh')
+            refresh_token = result['tokens']['refresh']
             response = Response(result)
             set_refresh_cookie(response, refresh_token)
             return response
@@ -84,7 +86,7 @@ class VerifyLoginOTPView(APIView):
     def post(self, request):
         try:
             result = VerifyMobileOTPAction(request.data, purpose='login').execute()
-            refresh_token = result['tokens'].pop('refresh')
+            refresh_token = result['tokens']['refresh']
             response = Response(result)
             set_refresh_cookie(response, refresh_token)
             return response
@@ -111,7 +113,7 @@ class VerifyRegisterOTPView(APIView):
     def post(self, request):
         try:
             result = VerifyMobileOTPAction(request.data, purpose='register').execute()
-            refresh_token = result['tokens'].pop('refresh')
+            refresh_token = result['tokens']['refresh']
             response = Response(result, status=status.HTTP_201_CREATED)
             set_refresh_cookie(response, refresh_token)
             return response
@@ -181,11 +183,18 @@ class CookieTokenRefreshView(APIView):
             return Response({'error': 'Refresh token is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
         serializer = TokenRefreshSerializer(data={'refresh': refresh_token})
-        serializer.is_valid(raise_exception=True)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except (InvalidToken, TokenError, ObjectDoesNotExist):
+            response = Response({'error': 'Refresh token is invalid or expired.'}, status=status.HTTP_401_UNAUTHORIZED)
+            clear_refresh_cookie(response)
+            return response
 
-        response = Response({'tokens': {'access': serializer.validated_data['access']}})
+        response_tokens = {'access': serializer.validated_data['access']}
         rotated_refresh = serializer.validated_data.get('refresh')
+        response = Response({'tokens': response_tokens})
         if rotated_refresh:
+            response_tokens['refresh'] = rotated_refresh
             set_refresh_cookie(response, rotated_refresh)
         return response
 

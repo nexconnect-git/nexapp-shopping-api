@@ -9,6 +9,7 @@ class OrderIssue(models.Model):
         ('refund', 'Refund Request'),
         ('damage', 'Damaged Item'),
         ('mismatch', 'Item Mismatch'),
+        ('late', 'Late Delivery'),
     ]
     STATUS_CHOICES = [
         ('open', 'Open'),
@@ -57,3 +58,19 @@ class IssueMessage(models.Model):
 
     def __str__(self):
         return f"Message on issue {self.issue_id} by {self.sender.username}"
+
+
+class OrderIssueAttachment(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    issue = models.ForeignKey(OrderIssue, on_delete=models.CASCADE, related_name='attachments')
+    uploaded_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='issue_attachments')
+    file = models.FileField(upload_to='order_issue_attachments/')
+    content_type = models.CharField(max_length=100, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        app_label = 'orders'
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"Attachment on issue {self.issue_id} by {self.uploaded_by.username}"

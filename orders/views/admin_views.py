@@ -164,6 +164,7 @@ _PLATFORM_SETTING_FIELDS = [
     "delivery_base_fee",
     "delivery_per_km_fee",
     "free_delivery_above",
+    "enabled_payment_methods",
     "cancellation_window_minutes",
     "cancellation_allowed_statuses",
 ]
@@ -175,7 +176,9 @@ class AdminPlatformSettingView(APIView):
     def get(self, request):
         from orders.models.setting import PlatformSetting
         setting = PlatformSetting.get_setting()
-        return Response({f: getattr(setting, f) for f in _PLATFORM_SETTING_FIELDS})
+        data = {f: getattr(setting, f) for f in _PLATFORM_SETTING_FIELDS}
+        data["enabled_payment_methods"] = setting.normalized_payment_methods()
+        return Response(data)
 
     def patch(self, request):
         from orders.models.setting import PlatformSetting
@@ -195,4 +198,6 @@ class AdminPlatformSettingView(APIView):
                 summary=f"Updated platform settings: {', '.join(updated)}.",
                 metadata={'updated_fields': updated},
             )
-        return Response({f: getattr(setting, f) for f in _PLATFORM_SETTING_FIELDS})
+        data = {f: getattr(setting, f) for f in _PLATFORM_SETTING_FIELDS}
+        data["enabled_payment_methods"] = setting.normalized_payment_methods()
+        return Response(data)

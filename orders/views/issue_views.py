@@ -8,8 +8,9 @@ from rest_framework.views import APIView
 from accounts.permissions import IsAdminRole
 from orders.actions.ordering import AddIssueMessageAction
 from orders.data.issue_repo import IssueRepository
-from orders.models import IssueMessage, OrderIssue, Order
-from orders.serializers import OrderIssueSerializer
+from orders.models import IssueMessage, OrderIssue, Order, OrderIssueAttachment
+from orders.serializers import OrderIssueAttachmentSerializer, OrderIssueSerializer
+from helpers.validators import validate_document_upload
 
 
 class CustomerOrderIssueListCreateView(APIView):
@@ -36,9 +37,9 @@ class CustomerOrderIssueListCreateView(APIView):
         except Order.DoesNotExist:
             return Response({"error": "Order not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        if order.status not in ("delivered", "cancelled"):
+        if order.status in ("draft",):
             return Response(
-                {"error": "Issues can only be raised on delivered or cancelled orders."},
+                {"error": "Issues cannot be raised for this order yet."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -74,3 +75,27 @@ class IssueMessageCreateView(APIView):
             return Response(data, status=status.HTTP_201_CREATED)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_404_NOT_FOUND)
+
+
+class IssueAttachmentCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        try:
+            issue = IssueRepository.get_customer_issue(pk, request.user)
+        except OrderIssue.DoesNotExist:
+            return Response({"error": "Issue not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        upload = request.FILES.get("file")
+        try:
+            validate_document_upload(upload, label="attachment")
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        attachment = OrderIssueAttachment.objects.create(
+            issue=issue,
+            uploaded_by=request.user,
+            file=upload,
+            content_type=getattr(upload, "content_type", "") or "",
+        )
+        return Response(OrderIssueAttachmentSerializer(attachment).data, status=status.HTTP_201_CREATED)

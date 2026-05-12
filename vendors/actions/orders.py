@@ -1,4 +1,3 @@
-import random
 from decimal import Decimal
 from django.db import transaction
 from django.utils import timezone
@@ -33,12 +32,9 @@ class UpdateOrderStatusAction(BaseAction):
             if new_status not in current_allowed:
                 raise ValueError(f"Cannot transition from '{order.status}' to '{new_status}'.")
 
-        if new_status == "ready":
-            order.delivery_otp = str(random.randint(100000, 999999))
-
         old_status = order.status
         order.status = new_status
-        order.save(update_fields=["status", "delivery_otp", "updated_at"])
+        order.save(update_fields=["status", "updated_at"])
 
         description_map = {
             "confirmed": "Order confirmed by vendor.",

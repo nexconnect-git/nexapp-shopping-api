@@ -34,7 +34,7 @@ class CreateRazorpayOrderAction(BaseAction):
         if self._order.is_payment_verified:
             raise ValueError('Payment has already been completed for this order.')
 
-        if not getattr(settings, 'RAZORPAY_KEY_ID', ''):
+        if not getattr(settings, 'RAZORPAY_KEY_ID', '') or not getattr(settings, 'RAZORPAY_KEY_SECRET', ''):
             raise ValueError('Razorpay is not configured on this server.')
 
         rz_order = RazorpayService().create_order(

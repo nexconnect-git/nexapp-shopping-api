@@ -444,6 +444,7 @@ class Command(BaseCommand):
                 unit=unit,
                 is_available=available,
                 is_featured=featured,
+                approval_status=Product.APPROVAL_STATUS_APPROVED,
                 average_rating=Decimal(str(round(random.uniform(3.8, 5.0), 2))),
                 total_ratings=random.randint(5, 60),
             )

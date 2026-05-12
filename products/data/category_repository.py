@@ -36,7 +36,7 @@ class CategoryRepository:
             )
             .filter(
                 models.Q(products__isnull=False) |
-                models.Q(children__products__isnull=False)
+                models.Q(children__is_active=True, children__show_in_customer_ui=True, children__products__isnull=False)
             )
             .distinct()
         )

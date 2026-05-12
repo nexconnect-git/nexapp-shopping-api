@@ -4,7 +4,7 @@ from .order_serializers import (
     OrderRatingSerializer, CreateOrderSerializer,
 )
 from .coupon_serializers import CouponSerializer
-from .issue_serializers import IssueMessageSerializer, OrderIssueSerializer
+from .issue_serializers import IssueMessageSerializer, OrderIssueAttachmentSerializer, OrderIssueSerializer
 from .operations_serializers import (
     DeliveryZoneSerializer,
     FeatureFlagSerializer,
@@ -17,7 +17,7 @@ __all__ = [
     'OrderItemSerializer', 'OrderTrackingSerializer', 'OrderSerializer',
     'OrderRatingSerializer', 'CreateOrderSerializer',
     'CouponSerializer',
-    'IssueMessageSerializer', 'OrderIssueSerializer',
+    'IssueMessageSerializer', 'OrderIssueAttachmentSerializer', 'OrderIssueSerializer',
     'RefundLedgerSerializer', 'DeliveryZoneSerializer',
     'TaxRuleSerializer', 'FeatureFlagSerializer',
 ]

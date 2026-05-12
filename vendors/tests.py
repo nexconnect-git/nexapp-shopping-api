@@ -16,7 +16,9 @@ from rest_framework.test import APIClient
 
 from accounts.models import User
 from vendors.models import Vendor
-from orders.models import Order
+from orders.actions.ordering import CreateOrdersFromCartAction
+from orders.models import Cart, CartItem, Order
+from products.models import Product
 from delivery.models import DeliveryAssignment
 from notifications.models import Notification
 from vendors.actions import StartDeliverySearchAction, CancelDeliverySearchAction, UpdateOrderStatusAction
@@ -278,3 +280,116 @@ class DeliverySearchEndpointTests(TestCase):
         url = f"/api/vendors/orders/{self.order.id}/start-delivery-search/"
         response = self.client.post(url)
         self.assertIn(response.status_code, [403, 404])
+
+
+class VendorOperationsEndpointTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.vendor_user, self.vendor = make_vendor_user("vendor_ops")
+        self.customer = make_customer_user("customer_ops")
+        self.client.force_authenticate(user=self.vendor_user)
+        self.order = make_order(self.vendor, self.customer, status="placed")
+
+    def test_operations_summary_returns_live_metrics(self):
+        Product.objects.create(
+            vendor=self.vendor,
+            name="Low Stock Item",
+            slug="low-stock-item",
+            price="25.00",
+            stock=1,
+            low_stock_threshold=3,
+        )
+        response = self.client.get("/api/vendors/operations/summary/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["orders"]["new"], 1)
+        self.assertEqual(response.data["alerts"]["low_stock"], 1)
+        self.assertIn("auto_order_acceptance", response.data["store"])
+
+    def test_live_orders_returns_vendor_orders(self):
+        other_user, other_vendor = make_vendor_user("other_vendor")
+        other_customer = make_customer_user("other_customer")
+        make_order(other_vendor, other_customer, status="placed")
+
+        response = self.client.get("/api/vendors/live-orders/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["id"], str(self.order.id))
+
+    def test_store_settings_patch_updates_vendor_controls(self):
+        response = self.client.patch(
+            "/api/vendors/store-settings/",
+            {
+                "is_accepting_orders": False,
+                "auto_order_acceptance": True,
+                "base_prep_time_min": 12,
+                "min_order_amount": "99.00",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.vendor.refresh_from_db()
+        self.assertFalse(self.vendor.is_accepting_orders)
+        self.assertTrue(self.vendor.auto_order_acceptance)
+        self.assertEqual(self.vendor.base_prep_time_min, 12)
+        self.assertEqual(str(self.vendor.min_order_amount), "99.00")
+
+    def test_order_action_endpoints_move_order_through_prep_flow(self):
+        accept_url = f"/api/vendors/orders/{self.order.id}/accept/"
+        preparing_url = f"/api/vendors/orders/{self.order.id}/start-preparing/"
+        ready_url = f"/api/vendors/orders/{self.order.id}/mark-ready/"
+
+        response = self.client.post(accept_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["status"], "confirmed")
+
+        response = self.client.post(preparing_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["status"], "preparing")
+
+        response = self.client.post(ready_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["status"], "ready")
+
+    def test_reject_order_endpoint_requires_vendor_ownership(self):
+        other_user, other_vendor = make_vendor_user("reject_other")
+        other_order = make_order(other_vendor, self.customer, status="placed")
+        response = self.client.post(
+            f"/api/vendors/orders/{other_order.id}/reject/",
+            {"reason": "Cannot fulfill"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 404)
+
+
+class VendorAutoAcceptTests(TestCase):
+    def test_create_order_auto_confirms_when_vendor_auto_accept_enabled(self):
+        vendor_user, vendor = make_vendor_user("auto_vendor")
+        vendor.auto_order_acceptance = True
+        vendor.save(update_fields=["auto_order_acceptance"])
+        customer = make_customer_user("auto_customer")
+        address = customer.addresses.create(
+            full_name="Auto Customer",
+            phone="000",
+            address_line1="1 Main St",
+            city="City",
+            state="ST",
+            postal_code="00000",
+        )
+        product = Product.objects.create(
+            vendor=vendor,
+            name="Auto Product",
+            slug="auto-product",
+            price="50.00",
+            stock=5,
+        )
+        cart = Cart.objects.create(user=customer)
+        CartItem.objects.create(cart=cart, product=product, quantity=1)
+
+        orders = CreateOrdersFromCartAction().execute(customer, str(address.id))
+
+        self.assertEqual(len(orders), 1)
+        orders[0].refresh_from_db()
+        self.assertEqual(orders[0].status, "confirmed")
+        self.assertTrue(orders[0].tracking.filter(status="confirmed").exists())

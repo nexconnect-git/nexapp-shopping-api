@@ -10,6 +10,10 @@ class Coupon(models.Model):
         ('fixed', 'Fixed Amount'),
         ('free_delivery', 'Free Delivery'),
     ]
+    DISPLAY_SECTION_CHOICES = [
+        ('hero', 'Featured'),
+        ('more', 'More offers'),
+    ]
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     code = models.CharField(max_length=50, unique=True)
     title = models.CharField(max_length=200)
@@ -28,11 +32,17 @@ class Coupon(models.Model):
     used_count = models.PositiveIntegerField(default=0)
     valid_from = models.DateTimeField()
     valid_until = models.DateTimeField(null=True, blank=True)
+    display_section = models.CharField(max_length=20, choices=DISPLAY_SECTION_CHOICES, default='more')
+    badge_text = models.CharField(max_length=80, blank=True)
+    icon_name = models.CharField(max_length=60, blank=True, help_text='Material icon name used by customer apps')
+    accent_color = models.CharField(max_length=20, blank=True, help_text='Optional hex color for customer app offer cards')
+    display_order = models.PositiveIntegerField(default=0)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='created_coupons')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         app_label = 'orders'
+        ordering = ['display_order', '-created_at']
 
     def __str__(self):
         return f"{self.code} — {self.title}"

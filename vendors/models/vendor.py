@@ -44,8 +44,8 @@ class Vendor(models.Model):
     city         = models.CharField(max_length=100)
     state        = models.CharField(max_length=100)
     postal_code  = models.CharField(max_length=10)
-    latitude     = models.DecimalField(max_digits=9, decimal_places=6, default=0)
-    longitude    = models.DecimalField(max_digits=9, decimal_places=6, default=0)
+    latitude     = models.DecimalField(max_digits=11, decimal_places=8, default=0)
+    longitude    = models.DecimalField(max_digits=11, decimal_places=8, default=0)
 
     # ── Classification ────────────────────────────────────────────────────────
     vendor_type  = models.CharField(max_length=20, choices=VENDOR_TYPE_CHOICES, default='individual', blank=True)
