@@ -49,7 +49,8 @@ class InvoiceGenerateView(APIView):
                 if hasattr(user, 'vendor_profile') and order.vendor == user.vendor_profile:
                     data.setdefault('vendor', str(user.vendor_profile.id))
                 elif order.customer == user:
-                    pass
+                    data.setdefault('recipient', str(user.id))
+                    data.setdefault('vendor', str(order.vendor.id))
                 else:
                     return Response(
                         {'error': 'You do not have permission to generate an invoice for this order.'},
@@ -82,6 +83,14 @@ class InvoiceDownloadView(APIView):
         elif invoice.recipient == user:
             can_access = True
         elif invoice.vendor and hasattr(user, 'vendor_profile') and invoice.vendor == user.vendor_profile:
+            can_access = True
+        elif invoice.order and invoice.order.customer == user:
+            can_access = True
+        elif (
+            invoice.order
+            and hasattr(user, 'vendor_profile')
+            and invoice.order.vendor == user.vendor_profile
+        ):
             can_access = True
             
         if not can_access:
