@@ -36,6 +36,7 @@ class DeliveryPartnerSerializer(serializers.ModelSerializer):
             'phone': obj.user.phone,
             'avatar': avatar,
             'country': obj.user.country,
+            'currency': obj.user.currency,
             'role': obj.user.role,
             'is_staff': obj.user.is_staff,
             'is_superuser': obj.user.is_superuser,
@@ -62,7 +63,7 @@ class DeliveryPartnerSerializer(serializers.ModelSerializer):
                     val = val.lower() == 'true'
                 instance.user.is_active = bool(val)
                 user_updated.append('is_active')
-            for field in ['username', 'first_name', 'last_name', 'email', 'phone']:
+            for field in ['username', 'first_name', 'last_name', 'email', 'phone', 'country', 'currency']:
                 if field in request.data:
                     setattr(instance.user, field, request.data[field])
                     user_updated.append(field)

@@ -14,7 +14,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'username', 'email', 'password', 'first_name', 'last_name',
-                  'phone', 'role']
+                  'phone', 'role', 'country', 'currency']
 
     def validate_username(self, value: str) -> str:
         value = value.strip()
@@ -69,7 +69,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'username', 'email', 'first_name', 'last_name',
-                  'phone', 'avatar', 'role', 'country', 'is_verified', 'is_active',
+                  'phone', 'avatar', 'role', 'country', 'currency', 'is_verified', 'is_active',
                   'force_password_change', 'is_superuser', 'created_at', 'updated_at']
         read_only_fields = ['id', 'username', 'role', 'is_verified', 'is_active',
                             'force_password_change', 'is_superuser', 'created_at', 'updated_at']
@@ -100,6 +100,7 @@ class AdminUserUpdateSerializer(serializers.ModelSerializer):
             'email',
             'phone',
             'country',
+            'currency',
             'is_verified',
             'is_active',
         ]
@@ -115,7 +116,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'username', 'email', 'password', 'first_name', 'last_name',
-                  'phone', 'avatar', 'country', 'role', 'is_staff', 'is_superuser',
+                  'phone', 'avatar', 'country', 'currency', 'role', 'is_staff', 'is_superuser',
                   'is_active', 'is_verified', 'force_password_change',
                   'date_joined', 'last_login', 'created_at', 'updated_at',
                   'account_type']

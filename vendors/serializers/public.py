@@ -48,6 +48,7 @@ class VendorSerializer(serializers.ModelSerializer):
             "phone": obj.user.phone,
             "avatar": avatar,
             "country": obj.user.country,
+            "currency": obj.user.currency,
             "role": obj.user.role,
             "is_staff": obj.user.is_staff,
             "is_superuser": obj.user.is_superuser,

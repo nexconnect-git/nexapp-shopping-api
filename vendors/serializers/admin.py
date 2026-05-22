@@ -17,7 +17,7 @@ class AdminVendorSerializer(VendorSerializer):
 
     def update(self, instance, validated_data):
         request = self.context.get('request')
-        user_fields = ['username', 'first_name', 'last_name']
+        user_fields = ['username', 'first_name', 'last_name', 'country', 'currency']
         if request:
             user_updated = []
             for field in user_fields:
