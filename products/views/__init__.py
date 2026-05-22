@@ -33,6 +33,7 @@ from products.views.catalog_views import (
     VendorInheritedProductSubmitView,
 )
 from .wishlist_views import WishlistView, WishlistToggleView, WishlistStatusView
+from .search_views import ProductSearchByLocationView
 
 __all__ = [
     'CategoryListView',
@@ -73,4 +74,5 @@ __all__ = [
     'WishlistView',
     'WishlistToggleView',
     'WishlistStatusView',
+    'ProductSearchByLocationView',
 ]

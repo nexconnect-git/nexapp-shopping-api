@@ -10,7 +10,7 @@ from accounts.actions.audit_actions import CreateAdminAuditLogAction
 from orders.actions.ordering import AdminUpdateOrderStatusAction
 from orders.data.order_repo import OrderRepository
 from orders.data.issue_repo import IssueRepository
-from orders.models import Order, OrderIssue
+from orders.models import Order, OrderIssue, PlatformSetting
 from orders.serializers import OrderSerializer, OrderIssueSerializer
 
 __all__ = [
@@ -164,6 +164,12 @@ _PLATFORM_SETTING_FIELDS = [
     "delivery_base_fee",
     "delivery_per_km_fee",
     "free_delivery_above",
+    "platform_fee",
+    "packaging_fee",
+    "small_cart_threshold",
+    "small_cart_fee",
+    "tax_percentage",
+    "surge_fee",
     "enabled_payment_methods",
     "cancellation_window_minutes",
     "cancellation_allowed_statuses",
@@ -174,14 +180,12 @@ class AdminPlatformSettingView(APIView):
     permission_classes = [IsAuthenticated, IsAdminRole]
 
     def get(self, request):
-        from orders.models.setting import PlatformSetting
         setting = PlatformSetting.get_setting()
         data = {f: getattr(setting, f) for f in _PLATFORM_SETTING_FIELDS}
         data["enabled_payment_methods"] = setting.normalized_payment_methods()
         return Response(data)
 
     def patch(self, request):
-        from orders.models.setting import PlatformSetting
         setting = PlatformSetting.get_setting()
         updated = []
         for field in _PLATFORM_SETTING_FIELDS:
@@ -195,7 +199,7 @@ class AdminPlatformSettingView(APIView):
                 action='settings',
                 entity_type='platform_setting',
                 entity_id=str(setting.id),
-                summary=f"Updated platform settings: {', '.join(updated)}.",
+                summary=f"Updated {len(updated)} platform setting{'s' if len(updated) != 1 else ''}.",
                 metadata={'updated_fields': updated},
             )
         data = {f: getattr(setting, f) for f in _PLATFORM_SETTING_FIELDS}

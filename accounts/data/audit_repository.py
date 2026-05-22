@@ -4,6 +4,22 @@ from django.db.models import QuerySet
 
 from accounts.models import AdminAuditLog
 
+USER_AGENT_MAX_LENGTH = 255
+
+
+def _truncate(value: str, max_length: int) -> str:
+    text = str(value or '')
+    if len(text) <= max_length:
+        return text
+    if max_length <= 3:
+        return text[:max_length]
+    return f'{text[:max_length - 3]}...'
+
+
+def _field_max_length(field_name: str, fallback: int) -> int:
+    field = AdminAuditLog._meta.get_field(field_name)
+    return field.max_length or fallback
+
 
 class AdminAuditLogRepository:
     @staticmethod
@@ -20,13 +36,13 @@ class AdminAuditLogRepository:
     ) -> AdminAuditLog:
         return AdminAuditLog.objects.create(
             actor=actor if getattr(actor, 'is_authenticated', False) else None,
-            action=action,
-            entity_type=entity_type,
-            entity_id=str(entity_id or ''),
-            summary=summary,
+            action=_truncate(action, _field_max_length('action', 32)),
+            entity_type=_truncate(entity_type, _field_max_length('entity_type', 100)),
+            entity_id=_truncate(str(entity_id or ''), _field_max_length('entity_id', 100)),
+            summary=_truncate(summary, _field_max_length('summary', 255)),
             metadata=metadata or {},
             ip_address=ip_address,
-            user_agent=user_agent,
+            user_agent=_truncate(user_agent, USER_AGENT_MAX_LENGTH),
         )
 
     @staticmethod

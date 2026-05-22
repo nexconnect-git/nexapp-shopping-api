@@ -17,6 +17,7 @@ from accounts.views.admin_views import AdminUserViewSet
 from accounts.views.admin_customers import AdminCustomerViewSet
 from accounts.views.admin_stats import AdminStatsView
 from accounts.views.admin_audit import AdminAuditLogListView
+from accounts.views.admin_availability import AdminIdentityAvailabilityView
 from accounts.views.admin_rbac import AdminPermissionGrantDetailView, AdminPermissionGrantListCreateView
 from accounts.views.wallet_views import WalletView, InitiateWalletTopUpView, VerifyWalletTopUpView
 from accounts.views.loyalty_views import LoyaltyView, LoyaltyPreviewView
@@ -42,6 +43,7 @@ __all__ = [
     'AdminCustomerViewSet',
     'AdminStatsView',
     'AdminAuditLogListView',
+    'AdminIdentityAvailabilityView',
     'WalletView',
     'InitiateWalletTopUpView',
     'VerifyWalletTopUpView',

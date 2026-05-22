@@ -1,5 +1,7 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
+from accounts.data.user_repository import UserRepository
+from helpers.phone_helpers import normalize_phone
 from helpers.vendor_hours import get_vendor_availability, is_vendor_open_now
 from products.models import Product
 from products.serializers.category_serializers import CategorySerializer
@@ -36,6 +38,7 @@ class VendorSerializer(serializers.ModelSerializer):
         ]
 
     def get_user_info(self, obj) -> dict:
+        avatar = obj.user.avatar.url if obj.user.avatar else None
         data = {
             "id": str(obj.user.id),
             "username": obj.user.username,
@@ -43,7 +46,18 @@ class VendorSerializer(serializers.ModelSerializer):
             "first_name": obj.user.first_name,
             "last_name": obj.user.last_name,
             "phone": obj.user.phone,
+            "avatar": avatar,
+            "country": obj.user.country,
+            "role": obj.user.role,
+            "is_staff": obj.user.is_staff,
+            "is_superuser": obj.user.is_superuser,
+            "is_active": obj.user.is_active,
+            "is_verified": obj.user.is_verified,
             "force_password_change": obj.user.force_password_change,
+            "date_joined": obj.user.date_joined,
+            "last_login": obj.user.last_login,
+            "created_at": obj.user.created_at,
+            "updated_at": obj.user.updated_at,
         }
         if obj.user.force_password_change and obj.user.temp_password:
             data["temp_password"] = obj.user.temp_password
@@ -143,7 +157,7 @@ class VendorRegistrationSerializer(serializers.Serializer):
     last_name = serializers.CharField(required=False, default="")
     store_name = serializers.CharField(max_length=200)
     description = serializers.CharField(required=False, default="")
-    phone = serializers.CharField(max_length=15)
+    phone = serializers.CharField(max_length=30)
     vendor_email = serializers.EmailField()
     address = serializers.CharField(max_length=255)
     city = serializers.CharField(max_length=100)
@@ -153,14 +167,25 @@ class VendorRegistrationSerializer(serializers.Serializer):
     longitude = serializers.DecimalField(max_digits=11, decimal_places=8)
 
     def validate_username(self, value: str) -> str:
-        if User.objects.filter(username=value).exists():
+        value = value.strip()
+        if UserRepository.username_exists(value):
             raise serializers.ValidationError("Username already exists.")
         return value
 
     def validate_email(self, value: str) -> str:
-        if User.objects.filter(email=value).exists():
+        value = value.strip().lower()
+        if UserRepository.email_exists(value):
             raise serializers.ValidationError("Email already exists.")
         return value
+
+    def validate_phone(self, value: str) -> str:
+        try:
+            phone = normalize_phone(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+        if UserRepository.phone_exists(phone):
+            raise serializers.ValidationError("Phone number already exists.")
+        return phone
 
     def create(self, validated_data):
         user = User.objects.create_user(
@@ -169,6 +194,7 @@ class VendorRegistrationSerializer(serializers.Serializer):
             password=validated_data["password"],
             first_name=validated_data.get("first_name", ""),
             last_name=validated_data.get("last_name", ""),
+            phone=validated_data["phone"],
             role="vendor",
         )
         return Vendor.objects.create(

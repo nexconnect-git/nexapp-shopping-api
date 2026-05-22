@@ -36,10 +36,18 @@ class AddToCartView(APIView):
         # Enforce single-vendor cart
         existing_items = cart.items.select_related("product__vendor").all()
         if existing_items.exists():
-            existing_vendor_id = str(existing_items.first().product.vendor_id)
+            existing_item = existing_items.first()
+            existing_vendor_id = str(existing_item.product.vendor_id)
             if existing_vendor_id != str(product.vendor_id):
                 return Response(
-                    {"error": "Your cart contains items from a different vendor. Clear your cart first."},
+                    {
+                        "error": f"Your cart has items from {existing_item.product.vendor.store_name}. Do you want to clear the cart and add items from {product.vendor.store_name}?",
+                        "code": "cart_store_conflict",
+                        "existing_store_id": existing_vendor_id,
+                        "existing_store_name": existing_item.product.vendor.store_name,
+                        "incoming_store_id": str(product.vendor_id),
+                        "incoming_store_name": product.vendor.store_name,
+                    },
                     status=status.HTTP_409_CONFLICT,
                 )
 

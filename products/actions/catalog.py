@@ -78,8 +78,9 @@ class CreateVendorProductFromCatalogAction:
         )
         if not catalog_product or not catalog_product.is_active:
             raise ValueError("Catalog product not found or inactive.")
-        if not VendorCatalogGrantRepository().has_grant(vendor, catalog_product):
-            raise ValueError("This catalog product has not been approved for your store.")
+        grant_repo = VendorCatalogGrantRepository()
+        if not grant_repo.has_grant(vendor, catalog_product):
+            grant_repo.grant(vendor, catalog_product)
         normalized_brand, quantity_value, normalized_unit = self.normalize_signature(
             selling_data.get("brand") or catalog_product.brand,
             selling_data.get("weight"),

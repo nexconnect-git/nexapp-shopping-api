@@ -1,7 +1,9 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
+from accounts.data.user_repository import UserRepository
 from delivery.models import DeliveryPartner
+from helpers.phone_helpers import normalize_phone
 
 User = get_user_model()
 
@@ -24,6 +26,7 @@ class DeliveryPartnerSerializer(serializers.ModelSerializer):
         ]
 
     def get_user(self, obj):
+        avatar = obj.user.avatar.url if obj.user.avatar else None
         data = {
             'id': obj.user.id,
             'username': obj.user.username,
@@ -31,8 +34,18 @@ class DeliveryPartnerSerializer(serializers.ModelSerializer):
             'first_name': obj.user.first_name,
             'last_name': obj.user.last_name,
             'phone': obj.user.phone,
+            'avatar': avatar,
+            'country': obj.user.country,
+            'role': obj.user.role,
+            'is_staff': obj.user.is_staff,
+            'is_superuser': obj.user.is_superuser,
             'is_active': obj.user.is_active,
+            'is_verified': obj.user.is_verified,
             'force_password_change': obj.user.force_password_change,
+            'date_joined': obj.user.date_joined,
+            'last_login': obj.user.last_login,
+            'created_at': obj.user.created_at,
+            'updated_at': obj.user.updated_at,
         }
         if obj.user.force_password_change and obj.user.temp_password:
             data['temp_password'] = obj.user.temp_password
@@ -65,21 +78,34 @@ class DeliveryPartnerRegistrationSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True, min_length=8, required=False, allow_blank=True)
     first_name = serializers.CharField(required=False, default='')
     last_name = serializers.CharField(required=False, default='')
-    phone = serializers.CharField(max_length=15, required=False, default='')
+    phone = serializers.CharField(max_length=30, required=False, default='')
     # Delivery partner fields
     vehicle_type = serializers.ChoiceField(choices=DeliveryPartner.VEHICLE_CHOICES)
     vehicle_number = serializers.CharField(max_length=20, required=False, default='')
     license_number = serializers.CharField(max_length=50)
 
     def validate_username(self, value):
-        if User.objects.filter(username=value).exists():
+        value = value.strip()
+        if UserRepository.username_exists(value):
             raise serializers.ValidationError("Username already exists.")
         return value
 
     def validate_email(self, value):
-        if User.objects.filter(email=value).exists():
+        value = value.strip().lower()
+        if UserRepository.email_exists(value):
             raise serializers.ValidationError("Email already exists.")
         return value
+
+    def validate_phone(self, value):
+        if not value:
+            return ''
+        try:
+            phone = normalize_phone(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+        if UserRepository.phone_exists(phone):
+            raise serializers.ValidationError("Phone number already exists.")
+        return phone
 
     def create(self, validated_data):
         password = validated_data.get('password')

@@ -1,5 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
+from accounts.data.user_repository import UserRepository
+from helpers.phone_helpers import normalize_phone
 from helpers.validators import validate_image_upload
 
 User = get_user_model()
@@ -13,6 +15,29 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         model = User
         fields = ['id', 'username', 'email', 'password', 'first_name', 'last_name',
                   'phone', 'role']
+
+    def validate_username(self, value: str) -> str:
+        value = value.strip()
+        if UserRepository.username_exists(value):
+            raise serializers.ValidationError("Username already exists.")
+        return value
+
+    def validate_email(self, value: str) -> str:
+        value = value.strip().lower()
+        if UserRepository.email_exists(value):
+            raise serializers.ValidationError("Email already exists.")
+        return value
+
+    def validate_phone(self, value: str) -> str:
+        if not value:
+            return ''
+        try:
+            phone = normalize_phone(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+        if UserRepository.phone_exists(phone):
+            raise serializers.ValidationError("Phone number already exists.")
+        return phone
 
     def create(self, validated_data):
         password = validated_data.pop('password')
@@ -90,10 +115,25 @@ class AdminUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'username', 'email', 'password', 'first_name', 'last_name',
-                  'phone', 'role', 'is_staff', 'is_superuser', 'is_active',
-                  'is_verified', 'created_at', 'account_type']
+                  'phone', 'avatar', 'country', 'role', 'is_staff', 'is_superuser',
+                  'is_active', 'is_verified', 'force_password_change',
+                  'date_joined', 'last_login', 'created_at', 'updated_at',
+                  'account_type']
         read_only_fields = ['id', 'role', 'is_staff', 'is_superuser', 'is_active',
-                            'is_verified', 'created_at']
+                            'is_verified', 'force_password_change', 'date_joined',
+                            'last_login', 'created_at', 'updated_at']
+
+    def validate_username(self, value: str) -> str:
+        value = value.strip()
+        if UserRepository.username_exists(value):
+            raise serializers.ValidationError("Username already exists.")
+        return value
+
+    def validate_email(self, value: str) -> str:
+        value = value.strip().lower()
+        if UserRepository.email_exists(value):
+            raise serializers.ValidationError("Email already exists.")
+        return value
 
     def create(self, validated_data):
         password = validated_data.pop('password')

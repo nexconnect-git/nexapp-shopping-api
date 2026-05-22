@@ -166,7 +166,13 @@ class VendorAvailableCatalogProductsView(APIView):
         qs = CatalogProductRepository().available_for_vendor(request.user.vendor_profile)
         search = request.query_params.get("search")
         if search:
-            qs = qs.filter(Q(name__icontains=search) | Q(brand__icontains=search))
+            qs = qs.filter(
+                Q(name__icontains=search)
+                | Q(brand__icontains=search)
+                | Q(barcode__icontains=search)
+                | Q(search_keywords__icontains=search)
+                | Q(category__name__icontains=search)
+            )
         paginator = CatalogPagination()
         page = paginator.paginate_queryset(qs, request)
         return paginator.get_paginated_response(CatalogProductSerializer(page, many=True, context={"request": request}).data)
@@ -179,8 +185,6 @@ class VendorCatalogProductDetailView(APIView):
         product = CatalogProductRepository().get_by_id(pk, select_related=["category"], prefetch=["images"])
         if not product or not product.is_active:
             return Response({"error": "Catalog product not found."}, status=status.HTTP_404_NOT_FOUND)
-        if not VendorCatalogGrantRepository().has_grant(request.user.vendor_profile, product):
-            return Response({"error": "Catalog product not available for this vendor."}, status=status.HTTP_403_FORBIDDEN)
         return Response(CatalogProductSerializer(product, context={"request": request}).data)
 
 

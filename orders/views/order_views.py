@@ -13,6 +13,7 @@ from rest_framework.views import APIView
 
 from accounts.models import Address
 from helpers.delivery_quotes import DeliveryServiceabilityError, FarDeliveryConfirmationRequired, quote_vendor_delivery
+from orders.actions.checkout import available_slots_for_cart, calculate_checkout_preview, public_price_breakup
 from orders.actions.ordering import CreateOrdersFromCartAction, CancelOrderAction
 from orders.data.cart_repo import CartRepository
 from orders.data.order_repo import OrderRepository
@@ -78,6 +79,8 @@ class CreateOrderView(APIView):
                     loyalty_points=vd.get("loyalty_points", 0),
                     scheduled_for=vd.get("scheduled_for"),
                     confirm_far_delivery=vd.get("confirm_far_delivery", False),
+                    cod_upi_confirmed=vd.get("cod_upi_confirmed", False),
+                    client_price_breakup=vd.get("client_price_breakup", {}),
                 )
 
                 if has_razorpay_proof:
@@ -109,7 +112,10 @@ class CreateOrderView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         except ValueError as exc:
-            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            payload = exc.args[0] if exc.args else str(exc)
+            if isinstance(payload, dict):
+                return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": str(payload)}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(OrderSerializer(created_orders, many=True).data, status=status.HTTP_201_CREATED)
 
@@ -123,6 +129,15 @@ class OrderListView(generics.ListAPIView):
             self.request.user,
             self.request.query_params.get("status"),
         )
+
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        response.data = {
+            "count": len(response.data) if isinstance(response.data, list) else response.data.get("count", 0),
+            "results": response.data if isinstance(response.data, list) else response.data.get("results", response.data),
+            "summary": OrderRepository.get_customer_order_summary(request.user),
+        }
+        return response
 
 
 class OrderDetailView(generics.RetrieveAPIView):
@@ -342,6 +357,75 @@ class DeliveryFeePreviewView(APIView):
                 "far_delivery_quotes": far_delivery_quotes,
             }
         )
+
+
+class CheckoutPreviewView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            preview = calculate_checkout_preview(
+                user=request.user,
+                delivery_address_id=request.data.get("delivery_address_id"),
+                payment_method=request.data.get("payment_method", "cod"),
+                coupon_code=request.data.get("coupon_code", ""),
+                wallet_amount=request.data.get("wallet_amount", Decimal("0")),
+                scheduled_for=request.data.get("scheduled_for"),
+                confirm_far_delivery=bool(request.data.get("confirm_far_delivery", False)),
+                cod_upi_confirmed=bool(request.data.get("cod_upi_confirmed", False)),
+                require_cod_confirmation=False,
+            )
+        except FarDeliveryConfirmationRequired as exc:
+            return Response(
+                {
+                    "error": "Far delivery confirmation required.",
+                    "code": "far_delivery_confirmation_required",
+                    "quotes": exc.quotes,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        except DeliveryServiceabilityError as exc:
+            return Response(
+                {
+                    "error": str(exc),
+                    "code": "delivery_not_serviceable",
+                    "details": exc.quote.as_dict(),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except ValueError as exc:
+            payload = exc.args[0] if exc.args else str(exc)
+            if isinstance(payload, dict):
+                return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": str(payload)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({
+            "price_breakup": public_price_breakup(preview),
+            "delivery_quotes": preview["delivery_quotes"],
+            "requires_far_delivery_confirmation": preview["requires_far_delivery_confirmation"],
+            "far_delivery_quotes": preview["far_delivery_quotes"],
+            "cod_upi_confirmation_required": preview["cod_upi_confirmation_required"],
+            "cod_upi_confirmed": preview["cod_upi_confirmed"],
+            "cod_upi_message": preview["cod_upi_message"],
+        })
+
+
+class AvailableSlotsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            slots = available_slots_for_cart(
+                request.user,
+                start_date=request.query_params.get("date"),
+                days=min(int(request.query_params.get("days", 7)), 14),
+            )
+        except ValueError as exc:
+            payload = exc.args[0] if exc.args else str(exc)
+            if isinstance(payload, dict):
+                return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": str(payload)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"results": slots})
 
 
 class ReorderView(APIView):

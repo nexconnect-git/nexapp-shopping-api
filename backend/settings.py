@@ -190,28 +190,25 @@ AUTH_REFRESH_COOKIE_SECURE = os.environ.get(
 ) == 'True'
 AUTH_REFRESH_COOKIE_DOMAIN = os.environ.get('AUTH_REFRESH_COOKIE_DOMAIN', '')
 
-INITIAL_SUPERUSER_SETUP_ENABLED = os.environ.get(
-    'INITIAL_SUPERUSER_SETUP_ENABLED',
-    'False',
-) == 'True'
-INITIAL_SUPERUSER_SETUP_TOKEN = os.environ.get('INITIAL_SUPERUSER_SETUP_TOKEN', '')
-
-if INITIAL_SUPERUSER_SETUP_ENABLED and not INITIAL_SUPERUSER_SETUP_TOKEN:
-    raise ImproperlyConfigured(
-        'INITIAL_SUPERUSER_SETUP_TOKEN must be set when INITIAL_SUPERUSER_SETUP_ENABLED=True.'
-    )
-
 # ---------------------------------------------------------------------------
 # Email
 # ---------------------------------------------------------------------------
 
-EMAIL_BACKEND = os.environ.get('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
-EMAIL_HOST = os.environ.get('EMAIL_HOST', 'localhost')
-EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 1025))
-EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
-EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
-EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'False') == 'True'
-DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@nex-connect.in')
+_smtp_configured = bool(os.environ.get('SMTP_HOST') and os.environ.get('SMTP_EMAIL'))
+EMAIL_BACKEND = os.environ.get(
+    'EMAIL_BACKEND',
+    'django.core.mail.backends.smtp.EmailBackend' if _smtp_configured else 'django.core.mail.backends.console.EmailBackend',
+)
+EMAIL_HOST = os.environ.get('SMTP_HOST') or os.environ.get('EMAIL_HOST', 'localhost')
+EMAIL_PORT = int(os.environ.get('SMTP_PORT') or os.environ.get('EMAIL_PORT', 1025))
+EMAIL_HOST_USER = os.environ.get('SMTP_EMAIL') or os.environ.get('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.environ.get('SMTP_APP_PASSWORD') or os.environ.get('EMAIL_HOST_PASSWORD', '')
+_smtp_secure = (os.environ.get('SMTP_SECURE') or os.environ.get('EMAIL_USE_TLS', 'False')).strip().lower()
+EMAIL_USE_SSL = _smtp_secure in ('ssl', 'smtps') or (_smtp_secure in ('true', '1', 'yes') and EMAIL_PORT == 465)
+EMAIL_USE_TLS = not EMAIL_USE_SSL and _smtp_secure in ('true', '1', 'yes', 'tls', 'starttls')
+DEFAULT_FROM_EMAIL = os.environ.get('FROM_EMAIL') or os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@nex-connect.in')
+DEFAULT_FROM_NAME = os.environ.get('FROM_NAME', 'NexConnect')
+CUSTOMER_AUTH_EXPOSE_DEV_OTP = os.environ.get('CUSTOMER_AUTH_EXPOSE_DEV_OTP', 'False') in ('True', 'true', '1', 'yes')
 
 # ---------------------------------------------------------------------------
 # Firebase / FCM

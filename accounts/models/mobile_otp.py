@@ -15,8 +15,10 @@ class MobileOTP(models.Model):
     )
 
     phone = models.CharField(max_length=20, db_index=True)
+    email = models.EmailField(blank=True, default='')
     purpose = models.CharField(max_length=20, choices=PURPOSE_CHOICES)
     otp_hash = models.CharField(max_length=128)
+    attempts = models.PositiveSmallIntegerField(default=0)
     is_used = models.BooleanField(default=False)
     expires_at = models.DateTimeField()
     created_at = models.DateTimeField(auto_now_add=True)
@@ -26,19 +28,24 @@ class MobileOTP(models.Model):
         ordering = ['-created_at']
 
     @classmethod
-    def create_code(cls, phone: str, purpose: str, ttl_minutes: int = 10) -> tuple['MobileOTP', str]:
+    def create_code(cls, phone: str, purpose: str, ttl_minutes: int = 10, email: str = '') -> tuple['MobileOTP', str]:
         code = f'{random.randint(0, 999999):06d}'
         otp = cls.objects.create(
             phone=phone,
+            email=email.strip().lower(),
             purpose=purpose,
             otp_hash=make_password(code),
             expires_at=timezone.now() + timedelta(minutes=ttl_minutes),
         )
         return otp, code
 
-    def matches(self, code: str) -> bool:
+    def matches(self, code: str, max_attempts: int = 5) -> bool:
+        self.attempts += 1
+        self.save(update_fields=['attempts'])
+        if self.attempts > max_attempts:
+            return False
         return check_password(code, self.otp_hash)
 
     @property
     def is_valid(self) -> bool:
-        return not self.is_used and timezone.now() <= self.expires_at
+        return not self.is_used and self.attempts < 5 and timezone.now() <= self.expires_at

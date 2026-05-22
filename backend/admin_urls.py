@@ -10,6 +10,7 @@ from backend.scheduled_tasks_views import (
 )
 from accounts.views import (
     AdminAuditLogListView,
+    AdminIdentityAvailabilityView,
     AdminPermissionGrantDetailView,
     AdminPermissionGrantListCreateView,
     AdminStatsView,
@@ -72,6 +73,7 @@ from orders.views import (
     AdminDeliveryZoneListCreateView,
     AdminFeatureFlagDetailView,
     AdminFeatureFlagListCreateView,
+    AdminPageFeatureConfigView,
     AdminFinanceExportView,
     AdminRefundLedgerDetailView,
     AdminRefundLedgerListCreateView,
@@ -101,6 +103,7 @@ urlpatterns = [
     # Dashboard summary statistics
     path('stats/', AdminStatsView.as_view(), name='admin-stats'),
     path('audit-logs/', AdminAuditLogListView.as_view(), name='admin-audit-logs'),
+    path('identity-availability/', AdminIdentityAvailabilityView.as_view(), name='admin-identity-availability'),
     path('permission-grants/', AdminPermissionGrantListCreateView.as_view(), name='admin-permission-grants'),
     path('permission-grants/<uuid:pk>/', AdminPermissionGrantDetailView.as_view(), name='admin-permission-grant-detail'),
 
@@ -168,6 +171,7 @@ urlpatterns = [
     path('tax-rules/<uuid:pk>/', AdminTaxRuleDetailView.as_view(), name='admin-tax-rule-detail'),
     path('feature-flags/', AdminFeatureFlagListCreateView.as_view(), name='admin-feature-flags'),
     path('feature-flags/<str:key>/', AdminFeatureFlagDetailView.as_view(), name='admin-feature-flag-detail'),
+    path('settings/page-features/', AdminPageFeatureConfigView.as_view(), name='admin-page-feature-config'),
 
     # Order Issues
     path('issues/', AdminOrderIssueListView.as_view(), name='admin-issues'),

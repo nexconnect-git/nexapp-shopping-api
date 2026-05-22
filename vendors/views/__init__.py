@@ -1,5 +1,6 @@
 from vendors.views.public import (
-    VendorRegistrationView, VendorListView, VendorDetailView, NearbyVendorsView
+    VendorRegistrationView, VendorIdentityAvailabilityView, VendorListView, VendorDetailView,
+    NearbyVendorsView, VendorRecommendationsView
 )
 from vendors.views.vendor import (
     VendorProfileView, VendorStoreSettingsView, VendorDashboardView, VendorOperationsSummaryView, VendorAnalyticsView, SetStoreStatusView, BulkUpdateStockView, VendorProductViewSet
@@ -46,6 +47,7 @@ from products.views.catalog_views import (
 
 __all__ = [
     'VendorRegistrationView',
+    'VendorIdentityAvailabilityView',
     'VendorListView',
     'NearbyVendorsView',
     'VendorDashboardView',
@@ -71,6 +73,7 @@ __all__ = [
     'SetStoreStatusView',
     'BulkUpdateStockView',
     'VendorDetailView',
+    'VendorRecommendationsView',
     'VendorProductViewSet',
     'VendorCouponViewSet',
     'VendorReviewViewSet',

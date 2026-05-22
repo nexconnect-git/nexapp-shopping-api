@@ -2,6 +2,7 @@ import logging
 from django_rq import job
 from django.core.mail import EmailMessage
 from django.conf import settings
+from accounts.services.email_service import EmailService
 from invoices.utils import generate_pdf_invoice
 from invoices.models import Invoice
 
@@ -24,9 +25,10 @@ def send_async_email(subject, body, to_emails, attachment_path=None, attachment_
                 email.attach(attachment_filename, f.read(), 'application/pdf')
         
         email.send(fail_silently=False)
-        logger.info(f"Successfully sent email to {to_emails}")
-    except Exception as e:
-        logger.error(f"Failed to send email to {to_emails}: {str(e)}")
+        logger.info("Successfully sent email to %s", to_emails)
+    except Exception:
+        logger.exception("Failed to send email to %s", to_emails)
+        raise
 
 
 @job('default')
@@ -76,7 +78,24 @@ def process_order_invoice_and_email(order_id):
                 email.attach(attachment_name, f.read(), 'application/pdf')
             
             email.send(fail_silently=False)
-            logger.info(f"Successfully sent invoice email for order {order.order_number}")
+            logger.info("Successfully sent invoice email for order %s", order.order_number)
+        EmailService.send_order_email(
+            "tax_invoice",
+            order.customer.email,
+            {
+                "customer_name": order.customer.first_name or order.customer.username,
+                "order_number": order.order_number,
+                "invoice_number": invoice.invoice_number,
+                "store_name": order.vendor.store_name,
+                "total": order.total,
+                "tax_amount": getattr(order, "tax_amount", 0),
+                "items": [
+                    {"name": item.product_name, "quantity": item.quantity, "subtotal": item.subtotal}
+                    for item in order.items.all()
+                ],
+            },
+        )
 
-    except Exception as e:
-        logger.error(f"Error processing invoice for order {order_id}: {str(e)}")
+    except Exception:
+        logger.exception("Error processing invoice for order %s", order_id)
+        raise

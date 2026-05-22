@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional
 from django.db.models import QuerySet
 
 from django.contrib.auth import get_user_model
+from helpers.phone_helpers import normalize_phone
 
 User = get_user_model()
 
@@ -30,6 +31,16 @@ class UserRepository:
             return None
 
     @staticmethod
+    def email_exists(email: str, exclude_user_id: Optional[str] = None) -> bool:
+        """Return whether an email is already used, case-insensitively."""
+        if not email:
+            return False
+        queryset = User.objects.filter(email__iexact=email.strip())
+        if exclude_user_id:
+            queryset = queryset.exclude(pk=exclude_user_id)
+        return queryset.exists()
+
+    @staticmethod
     def get_by_username(username: str) -> Optional[User]:
         """Return a User by username, or None if not found."""
         try:
@@ -38,12 +49,45 @@ class UserRepository:
             return None
 
     @staticmethod
+    def username_exists(username: str, exclude_user_id: Optional[str] = None) -> bool:
+        """Return whether a username is already used, case-insensitively."""
+        if not username:
+            return False
+        queryset = User.objects.filter(username__iexact=username.strip())
+        if exclude_user_id:
+            queryset = queryset.exclude(pk=exclude_user_id)
+        return queryset.exists()
+
+    @staticmethod
     def get_by_phone(phone: str, role: Optional[str] = None) -> Optional[User]:
         """Return the most recent user for a phone number, optionally restricted by role."""
         queryset = User.objects.filter(phone=phone)
         if role:
             queryset = queryset.filter(role=role)
         return queryset.order_by('-created_at').first()
+
+    @staticmethod
+    def phone_exists(phone: str, exclude_user_id: Optional[str] = None) -> bool:
+        """Return whether a phone number is already used by any user."""
+        if not phone or not phone.strip():
+            return False
+        normalized_phone = normalize_phone(phone)
+        queryset = User.objects.filter(phone=normalized_phone)
+        if exclude_user_id:
+            queryset = queryset.exclude(pk=exclude_user_id)
+        if queryset.exists():
+            return True
+
+        legacy_queryset = User.objects.exclude(phone='')
+        if exclude_user_id:
+            legacy_queryset = legacy_queryset.exclude(pk=exclude_user_id)
+        for stored_phone in legacy_queryset.values_list('phone', flat=True):
+            try:
+                if normalize_phone(stored_phone) == normalized_phone:
+                    return True
+            except ValueError:
+                continue
+        return False
 
     # ── Collection queries ────────────────────────────────────────────────────
 

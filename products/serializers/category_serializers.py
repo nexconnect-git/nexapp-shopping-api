@@ -22,7 +22,10 @@ class CategorySerializer(serializers.ModelSerializer):
     def get_children(self, obj) -> list:
         """Return serialized active customer-visible child categories."""
         children = obj.children.filter(is_active=True, show_in_customer_ui=True)
-        return CategorySerializer(children, many=True).data
+        available_category_ids = self.context.get("available_category_ids")
+        if available_category_ids is not None:
+            children = children.filter(id__in=available_category_ids)
+        return CategorySerializer(children, many=True, context=self.context).data
 
     def get_parent_name(self, obj) -> str | None:
         """Return the parent category's name, or None for root categories."""

@@ -14,6 +14,15 @@ from backend.events import issue_message_added, order_cancelled, order_placed, o
 from helpers.delivery_quotes import DeliveryServiceabilityError, FarDeliveryConfirmationRequired, quote_vendor_delivery
 from helpers.vendor_hours import get_vendor_availability
 from notifications.models import Notification
+from orders.actions.checkout import (
+    COD_UPI_CONFIRMATION_MESSAGE,
+    decimal_money,
+    public_price_breakup,
+    validate_cod_confirmation,
+    validate_delivery_address,
+    validate_schedule_slot,
+    validate_single_vendor_cart,
+)
 from orders.actions.refund_actions import IssueRazorpayRefundAction
 from orders.models import Cart, Coupon, CouponUsage, IssueMessage, Order, OrderIssue, OrderItem, OrderTracking
 from orders.serializers import IssueMessageSerializer
@@ -25,11 +34,15 @@ from .base import BaseAction
 
 class CreateOrdersFromCartAction(BaseAction):
     @transaction.atomic
-    def execute(self, user, delivery_address_id, payment_method="cod", notes="", coupon_code="", wallet_amount: Decimal = Decimal("0"), loyalty_points: int = 0, scheduled_for=None, confirm_far_delivery: bool = False) -> List[Order]:
+    def execute(self, user, delivery_address_id, payment_method="cod", notes="", coupon_code="", wallet_amount: Decimal = Decimal("0"), loyalty_points: int = 0, scheduled_for=None, confirm_far_delivery: bool = False, cod_upi_confirmed: bool = False, client_price_breakup: dict | None = None) -> List[Order]:
+        if not user.is_active:
+            raise ValueError("Your account is not active. Please contact support.")
         try:
             delivery_address = Address.objects.get(pk=delivery_address_id, user=user)
         except Address.DoesNotExist:
             raise ValueError("Delivery address not found.")
+        validate_delivery_address(delivery_address)
+        validate_cod_confirmation(payment_method, cod_upi_confirmed)
 
         try:
             cart = Cart.objects.prefetch_related("items__product__vendor").get(user=user)
@@ -60,6 +73,7 @@ class CreateOrdersFromCartAction(BaseAction):
         vendor_items: dict = defaultdict(list)
         for item in cart_items:
             vendor_items[item.product.vendor].append(item)
+        validate_single_vendor_cart(vendor_items)
 
         vendor_quotes = {}
         confirmation_quotes = []
@@ -79,10 +93,11 @@ class CreateOrdersFromCartAction(BaseAction):
 
         for vendor in vendor_items:
             is_open_now, availability_note = get_vendor_availability(vendor, current_dt=now_local)
-            if not is_open_now:
+            if not scheduled_for and not is_open_now:
                 raise ValueError(f"'{vendor.store_name}' {availability_note.lower()}.")
-            if VendorHoliday.objects.filter(vendor=vendor, date=today).exists():
+            if not scheduled_for and VendorHoliday.objects.filter(vendor=vendor, date=today).exists():
                 raise ValueError(f"'{vendor.store_name}' is closed today for a holiday.")
+            validate_schedule_slot(scheduled_for, vendor, vendor_items[vendor])
 
         total_coupon_discount = coupon.calculate_discount(cart_total) if coupon else Decimal("0")
 
@@ -176,7 +191,36 @@ class CreateOrdersFromCartAction(BaseAction):
                 (subtotal / cart_total * loyalty_discount).quantize(Decimal("0.01"))
                 if cart_total and loyalty_discount > Decimal("0") else Decimal("0")
             )
-            total = max(pre_wallet_total - vendor_wallet_share - vendor_loyalty_share, Decimal("0"))
+            product_discount = sum(
+                max((item.product.compare_price or item.product.price) - item.product.price, Decimal("0")) * item.quantity
+                for item in items
+            ).quantize(Decimal("0.01"))
+            platform_fee = decimal_money(getattr(platform, "platform_fee", 0))
+            packaging_fee = decimal_money(getattr(platform, "packaging_fee", 0))
+            small_cart_threshold = decimal_money(getattr(platform, "small_cart_threshold", 0))
+            small_cart_fee = decimal_money(getattr(platform, "small_cart_fee", 0)) if small_cart_threshold and subtotal < small_cart_threshold else Decimal("0.00")
+            surge_fee = decimal_money(getattr(platform, "surge_fee", 0))
+            tax_rate = decimal_money(getattr(platform, "tax_percentage", 0))
+            taxable = max(subtotal - vendor_discount, Decimal("0.00")) + platform_fee + packaging_fee + small_cart_fee + surge_fee
+            tax_amount = (taxable * tax_rate / Decimal("100")).quantize(Decimal("0.01"))
+            total = max(
+                pre_wallet_total - vendor_wallet_share - vendor_loyalty_share + platform_fee + packaging_fee + small_cart_fee + surge_fee + tax_amount,
+                Decimal("0"),
+            ).quantize(Decimal("0.01"))
+            price_preview = {
+                "item_subtotal": subtotal.quantize(Decimal("0.01")),
+                "product_discount": product_discount,
+                "coupon_discount": vendor_discount,
+                "delivery_fee": delivery_fee,
+                "platform_fee": platform_fee,
+                "packaging_fee": packaging_fee,
+                "small_cart_fee": small_cart_fee,
+                "tax_amount": tax_amount,
+                "surge_fee": surge_fee,
+                "wallet_discount": vendor_wallet_share,
+                "loyalty_discount": vendor_loyalty_share,
+                "final_payable": total,
+            }
 
             order = Order.objects.create(
                 customer=user,
@@ -184,16 +228,30 @@ class CreateOrdersFromCartAction(BaseAction):
                 delivery_address=delivery_address,
                 payment_method=payment_method,
                 subtotal=subtotal,
+                product_discount=product_discount,
                 delivery_fee=delivery_fee,
+                platform_fee=platform_fee,
+                packaging_fee=packaging_fee,
+                small_cart_fee=small_cart_fee,
+                tax_amount=tax_amount,
+                surge_fee=surge_fee,
                 coupon=coupon,
                 coupon_discount=vendor_discount,
                 wallet_discount=vendor_wallet_share,
+                loyalty_discount=vendor_loyalty_share,
+                discount=(vendor_discount + vendor_wallet_share + vendor_loyalty_share).quantize(Decimal("0.01")),
                 total=total,
                 notes=notes,
                 scheduled_for=scheduled_for,
                 estimated_delivery_time=quote.estimated_delivery_minutes,
                 delivery_latitude=delivery_address.latitude,
                 delivery_longitude=delivery_address.longitude,
+                price_breakup=public_price_breakup(price_preview),
+                payment_metadata={
+                    "cod_upi_confirmed": bool(cod_upi_confirmed),
+                    "cod_upi_message": COD_UPI_CONFIRMATION_MESSAGE if payment_method == "cod" else "",
+                    "client_price_breakup": client_price_breakup or {},
+                },
             )
 
             for item in items:

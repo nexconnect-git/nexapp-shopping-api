@@ -48,3 +48,5 @@ CACHES = {
         "BACKEND": "django.core.cache.backends.dummy.DummyCache",
     }
 }
+
+CUSTOMER_AUTH_EXPOSE_DEV_OTP = True

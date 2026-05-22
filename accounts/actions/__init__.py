@@ -1,6 +1,7 @@
 from accounts.actions.auth_actions import (
     RegisterAction,
     LoginAction,
+    SetupSuperUserAction,
     SendVerificationEmailAction,
     VerifyEmailAction,
 )
@@ -11,6 +12,7 @@ from accounts.actions.audit_actions import CreateAdminAuditLogAction
 __all__ = [
     'RegisterAction',
     'LoginAction',
+    'SetupSuperUserAction',
     'SendVerificationEmailAction',
     'VerifyEmailAction',
     'UpdateProfileAction',

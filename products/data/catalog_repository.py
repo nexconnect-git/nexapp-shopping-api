@@ -11,7 +11,7 @@ class CatalogProductRepository(BaseRepository):
     def available_for_vendor(self, vendor):
         existing_listing = vendor.products.filter(catalog_product_id=OuterRef("pk"))
         return (
-            CatalogProduct.objects.filter(is_active=True, vendor_grants__vendor=vendor)
+            CatalogProduct.objects.filter(is_active=True)
             .annotate(already_added=Exists(existing_listing))
             .filter(already_added=False)
             .select_related("category")

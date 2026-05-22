@@ -162,3 +162,79 @@ class UpdateAccountStatusAction:
             metadata={'status': status, 'fields': update_data},
         )
         return updated_user
+
+
+class CheckUserAvailabilityAction:
+    """Check whether user identity fields are available for onboarding flows."""
+
+    VALID_FIELDS = {'username', 'email', 'phone'}
+
+    def execute(self, field: str, value: str, exclude_user_id: str = '') -> Dict[str, Any]:
+        normalized_field = (field or '').strip().lower()
+        normalized_value = (value or '').strip()
+        if normalized_field not in self.VALID_FIELDS:
+            raise ValueError('field must be username, email, or phone.')
+        if not normalized_value:
+            raise ValueError('value is required.')
+
+        exclude_id = exclude_user_id or None
+        if normalized_field == 'username':
+            exists = UserRepository.username_exists(normalized_value, exclude_user_id=exclude_id)
+            suggestions = self._username_suggestions(normalized_value) if exists else []
+        elif normalized_field == 'email':
+            exists = UserRepository.email_exists(normalized_value, exclude_user_id=exclude_id)
+            suggestions = self._email_suggestions(normalized_value) if exists else []
+        else:
+            exists = UserRepository.phone_exists(normalized_value, exclude_user_id=exclude_id)
+            suggestions = self._phone_suggestions(normalized_value) if exists else []
+
+        return {
+            'field': normalized_field,
+            'value': normalized_value,
+            'unique': not exists,
+            'message': '' if not exists else f'{normalized_field.replace("_", " ").title()} is already in use.',
+            'suggestions': suggestions,
+        }
+
+    def _username_suggestions(self, value: str) -> list[str]:
+        base = ''.join(ch.lower() if ch.isalnum() else '_' for ch in value).strip('_') or 'user'
+        candidates = []
+        for suffix in ('01', '02', 'hq', 'ops', 'new'):
+            candidate = f'{base}_{suffix}'[:30]
+            if not UserRepository.username_exists(candidate):
+                candidates.append(candidate)
+            if len(candidates) >= 3:
+                break
+        return candidates
+
+    def _email_suggestions(self, value: str) -> list[str]:
+        if '@' not in value:
+            return []
+        local, domain = value.split('@', 1)
+        if not local or not domain:
+            return []
+        candidates = []
+        for suffix in ('ops', 'admin', 'new'):
+            candidate = f'{local}+{suffix}@{domain}'
+            if not UserRepository.email_exists(candidate):
+                candidates.append(candidate)
+            if len(candidates) >= 3:
+                break
+        return candidates
+
+    def _phone_suggestions(self, value: str) -> list[str]:
+        digits = ''.join(ch for ch in value if ch.isdigit())
+        if len(digits) < 4:
+            return []
+
+        prefix = '+' if value.strip().startswith('+') else ''
+        base = digits[:-1]
+        last_digit = int(digits[-1])
+        candidates = []
+        for offset in range(1, 10):
+            candidate = f'{prefix}{base}{(last_digit + offset) % 10}'
+            if not UserRepository.phone_exists(candidate):
+                candidates.append(candidate)
+            if len(candidates) >= 3:
+                break
+        return candidates

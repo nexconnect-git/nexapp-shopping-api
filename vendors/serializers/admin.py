@@ -3,6 +3,8 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
+from accounts.data.user_repository import UserRepository
+from helpers.phone_helpers import normalize_phone
 from helpers.validators import validate_pan, validate_ifsc, validate_gstin
 from vendors.models import Vendor, VendorOnboarding, VendorBankDetails, VendorServiceableArea, VendorHoliday, VendorAuditLog
 from .public import VendorSerializer
@@ -43,7 +45,7 @@ class VendorFullOnboardSerializer(serializers.Serializer):
     store_name = serializers.CharField(max_length=200)
     vendor_type = serializers.ChoiceField(choices=["individual", "company", "partnership"], default="individual")
     description = serializers.CharField(required=False, default="", allow_blank=True)
-    phone = serializers.CharField(max_length=15)
+    phone = serializers.CharField(max_length=30)
     email = serializers.EmailField()
     address = serializers.CharField(max_length=255, required=False, default="", allow_blank=True)
     city = serializers.CharField(max_length=100, required=False, default="", allow_blank=True)
@@ -96,14 +98,25 @@ class VendorFullOnboardSerializer(serializers.Serializer):
     holidays = serializers.ListField(child=serializers.DictField(), required=False, default=list)
 
     def validate_username(self, value):
-        if User.objects.filter(username=value).exists():
-            raise serializers.ValidationError("Username exists.")
+        value = value.strip()
+        if UserRepository.username_exists(value):
+            raise serializers.ValidationError("Username already exists.")
         return value
 
     def validate_email(self, value):
-        if User.objects.filter(email=value).exists():
-            raise serializers.ValidationError("Email exists.")
+        value = value.strip().lower()
+        if UserRepository.email_exists(value):
+            raise serializers.ValidationError("Email already exists.")
         return value
+
+    def validate_phone(self, value):
+        try:
+            phone = normalize_phone(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+        if UserRepository.phone_exists(phone):
+            raise serializers.ValidationError("Phone number already exists.")
+        return phone
 
     def create(self, validated_data):
         password = validated_data.get("password")

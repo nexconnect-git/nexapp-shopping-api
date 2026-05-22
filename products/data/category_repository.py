@@ -1,7 +1,11 @@
 """Repository for Category ORM queries."""
 
 from django.db import models
+
+from helpers.delivery_quotes import quote_vendor_delivery
 from products.models.category import Category
+from products.models.product import Product
+from vendors.models import Vendor
 
 
 class CategoryRepository:
@@ -26,19 +30,58 @@ class CategoryRepository:
         return Category.objects.filter(is_active=True, parent__isnull=True)
 
     @staticmethod
-    def get_customer_visible():
-        """Return active root categories that are visible in the customer UI and have at least one product."""
+    def get_available_customer_category_ids(vendor_id=None, address=None) -> set:
+        """Return category ids that have orderable customer products for the optional store/location."""
+        products = Product.objects.filter(
+            vendor__status="approved",
+            category__isnull=False,
+            category__is_active=True,
+            category__show_in_customer_ui=True,
+            approval_status=Product.APPROVAL_STATUS_APPROVED,
+            status="active",
+            is_available=True,
+            stock__gt=0,
+        ).select_related("category", "category__parent", "vendor")
+
+        if vendor_id:
+            products = products.filter(vendor_id=vendor_id)
+
+        if address:
+            vendor_ids = products.values_list("vendor_id", flat=True).distinct()
+            serviceable_vendor_ids = []
+            for vendor in Vendor.objects.filter(id__in=vendor_ids, status="approved"):
+                try:
+                    quote = quote_vendor_delivery(vendor, address)
+                except Exception:
+                    continue
+                if quote.is_serviceable:
+                    serviceable_vendor_ids.append(vendor.id)
+            products = products.filter(vendor_id__in=serviceable_vendor_ids)
+
+        category_ids = set()
+        for category_id, parent_id in products.values_list("category_id", "category__parent_id").distinct():
+            if category_id:
+                category_ids.add(category_id)
+            if parent_id:
+                category_ids.add(parent_id)
+        return category_ids
+
+    @staticmethod
+    def get_customer_visible(category_ids=None):
+        """Return active root categories visible to customers and backed by available products."""
+        if category_ids is None:
+            category_ids = CategoryRepository.get_available_customer_category_ids()
+        if not category_ids:
+            return Category.objects.none()
         return (
             Category.objects.filter(
                 is_active=True,
                 show_in_customer_ui=True,
                 parent__isnull=True,
             )
-            .filter(
-                models.Q(products__isnull=False) |
-                models.Q(children__is_active=True, children__show_in_customer_ui=True, children__products__isnull=False)
-            )
+            .filter(models.Q(id__in=category_ids) | models.Q(children__id__in=category_ids))
             .distinct()
+            .order_by("display_order", "name")
         )
 
     @staticmethod

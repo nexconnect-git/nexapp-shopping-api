@@ -2,11 +2,46 @@ import logging
 
 from django.dispatch import receiver
 
+from accounts.services.email_service import EmailService
 from backend.events import order_placed, order_cancelled, vendor_approved, order_status_updated
 from notifications.fcm import send_push
 from notifications.models import Notification
 
 logger = logging.getLogger(__name__)
+
+
+def _order_email_payload(order, message: str = "") -> dict:
+    address = order.delivery_address
+    return {
+        "customer_name": order.customer.first_name or order.customer.username,
+        "order_number": order.order_number,
+        "store_name": order.vendor.store_name,
+        "delivery_address": ", ".join(filter(None, [
+            getattr(address, "address_line1", ""),
+            getattr(address, "city", ""),
+            getattr(address, "state", ""),
+            getattr(address, "postal_code", ""),
+        ])),
+        "total": order.total,
+        "tax_amount": getattr(order, "tax_amount", 0),
+        "invoice_number": getattr(order.invoices.first(), "invoice_number", "") if hasattr(order, "invoices") else "",
+        "items": [
+            {
+                "name": item.product_name,
+                "quantity": item.quantity,
+                "subtotal": item.subtotal,
+            }
+            for item in order.items.all()
+        ],
+        "message": message,
+    }
+
+
+def _send_customer_order_email(order, template_type: str, message: str = "") -> None:
+    try:
+        EmailService.send_order_email(template_type, order.customer.email, _order_email_payload(order, message))
+    except Exception:
+        logger.exception("Customer order email %s failed for order %s.", template_type, order.pk)
 
 
 def _create_and_push(user, title: str, message: str, notification_type: str, data: dict):
@@ -43,6 +78,7 @@ def notify_order_placed(sender, order, **kwargs):
         notification_type="order",
         data={"order_id": str(order.id), "order_number": order.order_number},
     )
+    _send_customer_order_email(order, "order_placed")
 
 
 @receiver(order_cancelled)
@@ -54,6 +90,7 @@ def notify_order_cancelled(sender, order, **kwargs):
         notification_type="order",
         data={"order_id": str(order.id), "order_number": order.order_number},
     )
+    _send_customer_order_email(order, "order_cancelled", f"Order #{order.order_number} has been cancelled.")
 
 
 @receiver(order_status_updated)
@@ -82,6 +119,8 @@ def notify_order_status(sender, order, new_status, old_status, **kwargs):
             notification_type="delivery",
             data={"order_id": str(order.id), "order_number": order.order_number},
         )
+        _send_customer_order_email(order, "invoice")
+        _send_customer_order_email(order, "tax_invoice")
     elif new_status == "reassigned":
         _create_and_push(
             user=order.customer,

@@ -11,6 +11,7 @@ urlpatterns = [
     path('wishlist/<uuid:pk>/toggle/', views.WishlistToggleView.as_view(), name='wishlist-toggle'),
     path('categories/', views.CategoryListView.as_view(), name='category-list'),
     path('list/', views.ProductListView.as_view(), name='product-list'),
+    path('search-by-location/', views.ProductSearchByLocationView.as_view(), name='product-search-by-location'),
     path('featured/', views.FeaturedProductsView.as_view(), name='featured-products'),
     path('ai-image/', views.AIImageGenerateView.as_view(), name='ai-image-generate'),
     path('<uuid:pk>/', views.ProductDetailView.as_view(), name='product-detail'),
@@ -22,4 +23,3 @@ urlpatterns = [
     path('<uuid:pk>/stock/', views.VendorStockUpdateView.as_view(), name='vendor-stock-update'),
     path('low-stock/', views.VendorLowStockView.as_view(), name='vendor-low-stock'),
 ]
-

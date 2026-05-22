@@ -2,22 +2,20 @@
 
 import json
 import logging
-from decimal import Decimal
 
 from django.conf import settings
 from django.views.decorators.csrf import csrf_exempt
-from django.utils import timezone
 from django.utils.decorators import method_decorator
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.models import Address
-from helpers.delivery_quotes import quote_vendor_delivery
+from helpers.delivery_quotes import FarDeliveryConfirmationRequired
+from orders.actions.checkout import COD_UPI_CONFIRMATION_MESSAGE, calculate_checkout_preview
 from orders.actions.payment_actions import CreateRazorpayOrderAction, VerifyRazorpayPaymentAction
 from orders.data.order_repo import OrderRepository
-from orders.models import Cart, Coupon, CouponUsage, PlatformSetting
+from orders.models import PlatformSetting
 from orders.serializers import OrderSerializer
 from orders.services.razorpay_service import RazorpayService
 
@@ -30,8 +28,27 @@ class PaymentMethodsView(APIView):
     def get(self, request):
         setting = PlatformSetting.get_setting()
         methods = setting.normalized_payment_methods()
+        labels = {
+            setting.PAYMENT_METHOD_COD: "UPI at Delivery",
+            setting.PAYMENT_METHOD_UPI: "UPI",
+            setting.PAYMENT_METHOD_CARD: "Cards",
+            setting.PAYMENT_METHOD_WALLET: "Wallets",
+            setting.PAYMENT_METHOD_NETBANKING: "Netbanking",
+        }
+        available_methods = [
+            {
+                "id": method,
+                "gateway": "cod" if method == setting.PAYMENT_METHOD_COD else "razorpay",
+                "label": labels.get(method, method.replace("_", " ").title()),
+                "enabled": True,
+                "requires_confirmation": method == setting.PAYMENT_METHOD_COD,
+                "confirmation_message": COD_UPI_CONFIRMATION_MESSAGE if method == setting.PAYMENT_METHOD_COD else "",
+            }
+            for method in methods
+        ]
         return Response({
             'enabled_payment_methods': methods,
+            'available_methods': available_methods,
             'cod_enabled': setting.PAYMENT_METHOD_COD in methods,
             'online_enabled': any(method.startswith('razorpay_') for method in methods),
         })
@@ -62,96 +79,32 @@ class InitiateCheckoutPaymentView(APIView):
             return Response({'error': 'Razorpay is not configured.'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
         try:
-            cart = Cart.objects.prefetch_related('items__product__vendor').get(user=request.user)
-        except Cart.DoesNotExist:
-            return Response({'error': 'Cart is empty.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        if not cart.items.exists():
-            return Response({'error': 'Cart is empty.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        cart_total = Decimal(str(cart.total_amount))
-
-        # Compute delivery fee from address
-        delivery_fee = Decimal('0')
-        far_delivery_quotes = []
-        address_id = request.data.get('delivery_address_id')
-        confirm_far_delivery = bool(request.data.get('confirm_far_delivery', False))
-        if address_id:
-            try:
-                delivery_address = Address.objects.get(pk=address_id, user=request.user)
-                platform = PlatformSetting.get_setting()
-                vendor_seen: set = set()
-                cart_items = list(cart.items.select_related('product__vendor').all())
-                for item in cart_items:
-                    vendor = item.product.vendor
-                    if vendor.id in vendor_seen:
-                        continue
-                    vendor_seen.add(vendor.id)
-                    vendor_items = [ci for ci in cart_items if ci.product.vendor_id == vendor.id]
-                    subtotal = sum(ci.product.price * ci.quantity for ci in vendor_items)
-                    quote = quote_vendor_delivery(
-                        vendor=vendor,
-                        address=delivery_address,
-                        products=[ci.product for ci in vendor_items],
-                        quantities={str(ci.product.id): ci.quantity for ci in vendor_items},
-                        subtotal=subtotal,
-                        platform=platform,
-                    )
-                    if not quote.is_serviceable:
-                        return Response(
-                            {
-                                'error': quote.serviceability_error,
-                                'code': 'delivery_not_serviceable',
-                                'details': quote.as_dict(),
-                            },
-                            status=status.HTTP_400_BAD_REQUEST,
-                        )
-                    if quote.requires_far_delivery_confirmation:
-                        far_delivery_quotes.append(quote.as_dict())
-                    if platform.free_delivery_above > 0 and subtotal >= platform.free_delivery_above:
-                        continue
-                    delivery_fee += quote.delivery_fee
-            except Address.DoesNotExist:
-                pass
-
-        if far_delivery_quotes and not confirm_far_delivery:
+            preview = calculate_checkout_preview(
+                user=request.user,
+                delivery_address_id=request.data.get('delivery_address_id'),
+                payment_method='razorpay',
+                coupon_code=request.data.get('coupon_code', ''),
+                wallet_amount=request.data.get('wallet_amount', 0),
+                scheduled_for=request.data.get('scheduled_for'),
+                confirm_far_delivery=bool(request.data.get('confirm_far_delivery', False)),
+                cod_upi_confirmed=True,
+            )
+        except FarDeliveryConfirmationRequired as exc:
             return Response(
                 {
                     'error': 'Far delivery confirmation required.',
                     'code': 'far_delivery_confirmation_required',
-                    'quotes': far_delivery_quotes,
+                    'quotes': exc.quotes,
                 },
                 status=status.HTTP_409_CONFLICT,
             )
+        except ValueError as exc:
+            payload = exc.args[0] if exc.args else str(exc)
+            if isinstance(payload, dict):
+                return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': str(payload)}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Coupon discount
-        coupon_discount = Decimal('0')
-        coupon_code = (request.data.get('coupon_code') or '').strip().upper()
-        if coupon_code:
-            try:
-                coupon = Coupon.objects.get(code=coupon_code, is_active=True)
-                now = timezone.now()
-                if coupon.valid_from > now:
-                    return Response({'error': 'Coupon is not yet valid.'}, status=status.HTTP_400_BAD_REQUEST)
-                if coupon.valid_until and coupon.valid_until < now:
-                    return Response({'error': 'Coupon has expired.'}, status=status.HTTP_400_BAD_REQUEST)
-                if coupon.usage_limit and coupon.used_count >= coupon.usage_limit:
-                    return Response({'error': 'Coupon usage limit reached.'}, status=status.HTTP_400_BAD_REQUEST)
-                if CouponUsage.objects.filter(coupon=coupon, user=request.user).count() >= coupon.per_user_limit:
-                    return Response({'error': 'You have already used this coupon.'}, status=status.HTTP_400_BAD_REQUEST)
-                if cart_total < coupon.min_order_amount:
-                    return Response({'error': f'Minimum order amount is Rs.{coupon.min_order_amount}.'}, status=status.HTTP_400_BAD_REQUEST)
-                if coupon.discount_type == 'free_delivery':
-                    delivery_fee = Decimal('0')
-                else:
-                    coupon_discount = coupon.calculate_discount(cart_total).quantize(Decimal('0.01'))
-            except Coupon.DoesNotExist:
-                return Response({'error': 'Invalid coupon code.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Wallet deduction
-        wallet_amount = Decimal(str(request.data.get('wallet_amount', 0) or 0))
-
-        final_total = max(cart_total + delivery_fee - coupon_discount - wallet_amount, Decimal('0'))
+        final_total = preview['final_payable']
 
         if final_total <= 0:
             return Response(

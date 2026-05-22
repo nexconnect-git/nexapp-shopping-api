@@ -9,6 +9,7 @@ from orders.actions.payment_actions import (
     CreateRazorpayOrderAction,
     VerifyRazorpayPaymentAction,
 )
+from orders.actions.customer_content_actions import GetCustomerContentConfigAction
 
 __all__ = [
     'BaseAction',
@@ -18,4 +19,5 @@ __all__ = [
     'AddIssueMessageAction',
     'CreateRazorpayOrderAction',
     'VerifyRazorpayPaymentAction',
+    'GetCustomerContentConfigAction',
 ]

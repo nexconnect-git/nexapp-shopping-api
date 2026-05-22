@@ -20,3 +20,10 @@ tests/
 **/test_*.py
 **/*_test.py
 !helpers/tests.py
+
+# Seeding files
+products/management/commands/seed_customer_realtime_data.py
+# Agent files
+.agent/
+.codex-artifacts/
+

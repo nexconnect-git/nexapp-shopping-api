@@ -63,12 +63,6 @@ class UpdateOrderStatusAction(BaseAction):
         )
         broadcast_order_event(order, "order_updated")
 
-        # Auto-trigger delivery search when vendor marks order ready (if enabled for this vendor)
-        if new_status == "ready" and order.vendor.auto_order_acceptance:
-            try:
-                StartDeliverySearchAction().execute(order)
-            except ValueError:
-                pass  # Already searching or partner assigned — safe to ignore
 
         if new_status == "cancelled":
             # Restore stock for each item

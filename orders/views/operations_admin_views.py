@@ -4,8 +4,9 @@ from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.pagination import PageNumberPagination
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from accounts.actions.audit_actions import CreateAdminAuditLogAction
 from accounts.permissions import HasAdminPermission
@@ -16,6 +17,7 @@ from orders.data.operations_repo import (
     TaxRuleRepository,
 )
 from orders.data.order_repo import OrderRepository
+from orders.models import FeatureFlag
 from orders.serializers.operations_serializers import (
     DeliveryZoneSerializer,
     FeatureFlagSerializer,
@@ -26,6 +28,109 @@ from orders.serializers.operations_serializers import (
 
 class AdminOperationsPagination(PageNumberPagination):
     page_size = 20
+
+
+PAGE_FEATURE_CONFIG_KEY = 'page_feature_management'
+
+
+def _default_page_feature_config():
+    return {
+        'applications': [],
+        'global_settings': {
+            'requireAuthentication': True,
+            'maintenanceMode': False,
+            'enabledByDefault': True,
+            'pageDisabledAlerts': True,
+            'featureAccessRequests': True,
+            'bulkActionAlerts': False,
+        },
+        'version': 1,
+    }
+
+
+def _page_feature_flag():
+    flag, _created = FeatureFlag.objects.get_or_create(
+        key=PAGE_FEATURE_CONFIG_KEY,
+        defaults={
+            'name': 'Page & Feature Management',
+            'description': 'Platform-wide page and feature availability configuration.',
+            'is_enabled': True,
+            'audience': 'all',
+            'rollout_percentage': 100,
+            'metadata': _default_page_feature_config(),
+        },
+    )
+    if not isinstance(flag.metadata, dict):
+        flag.metadata = _default_page_feature_config()
+        flag.save(update_fields=['metadata'])
+    return flag
+
+
+def _page_feature_response(flag):
+    metadata = {**_default_page_feature_config(), **(flag.metadata or {})}
+    return {
+        **metadata,
+        'updated_at': flag.updated_at,
+        'is_enabled': flag.is_enabled,
+    }
+
+
+class PageFeatureConfigView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        flag = _page_feature_flag()
+        return Response(_page_feature_response(flag))
+
+
+class AdminPageFeatureConfigView(APIView):
+    permission_classes = [IsAuthenticated, HasAdminPermission]
+    required_admin_permission = 'settings.manage'
+
+    def get(self, request):
+        flag = _page_feature_flag()
+        return Response(_page_feature_response(flag))
+
+    def patch(self, request):
+        flag = _page_feature_flag()
+        metadata = {**_default_page_feature_config(), **(flag.metadata or {})}
+        updated_fields = []
+
+        if 'applications' in request.data:
+            applications = request.data.get('applications')
+            if not isinstance(applications, list):
+                return Response({'applications': 'Applications must be a list.'}, status=status.HTTP_400_BAD_REQUEST)
+            metadata['applications'] = applications
+            updated_fields.append('applications')
+
+        if 'global_settings' in request.data:
+            settings_payload = request.data.get('global_settings') or {}
+            if not isinstance(settings_payload, dict):
+                return Response({'global_settings': 'Global settings must be an object.'}, status=status.HTTP_400_BAD_REQUEST)
+            metadata['global_settings'] = {
+                **_default_page_feature_config()['global_settings'],
+                **settings_payload,
+            }
+            updated_fields.append('global_settings')
+
+        if 'is_enabled' in request.data:
+            flag.is_enabled = bool(request.data.get('is_enabled'))
+            updated_fields.append('is_enabled')
+
+        metadata['version'] = int(metadata.get('version') or 1) + 1
+        flag.metadata = metadata
+        flag.updated_by = request.user
+        flag.save(update_fields=['metadata', 'is_enabled', 'updated_by', 'updated_at'])
+
+        CreateAdminAuditLogAction().execute(
+            request=request,
+            action='settings',
+            entity_type='page_feature_config',
+            entity_id=PAGE_FEATURE_CONFIG_KEY,
+            summary='Updated page and feature management configuration.',
+            metadata={'updated_fields': updated_fields, 'version': metadata['version']},
+        )
+        return Response(_page_feature_response(flag))
 
 
 class AdminRefundLedgerListCreateView(generics.ListCreateAPIView):

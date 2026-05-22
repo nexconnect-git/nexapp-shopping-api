@@ -6,10 +6,27 @@ class OrderRepository:
 
     @staticmethod
     def get_customer_orders(user, status_filter=None):
-        qs = Order.objects.filter(customer=user)
+        active_statuses = ["placed", "confirmed", "preparing", "ready", "picked_up", "on_the_way"]
+        qs = Order.objects.filter(customer=user).prefetch_related("items").order_by("-placed_at")
         if status_filter:
-            qs = qs.filter(status=status_filter)
+            if status_filter == "active":
+                qs = qs.filter(status__in=active_statuses)
+            else:
+                qs = qs.filter(status=status_filter)
         return qs
+
+    @staticmethod
+    def get_customer_order_summary(user):
+        active_statuses = ["placed", "confirmed", "preparing", "ready", "picked_up", "on_the_way"]
+        qs = Order.objects.filter(customer=user)
+        return {
+            "all": qs.count(),
+            "active": qs.filter(status__in=active_statuses).count(),
+            "preparing": qs.filter(status="preparing").count(),
+            "on_the_way": qs.filter(status="on_the_way").count(),
+            "delivered": qs.filter(status="delivered").count(),
+            "cancelled": qs.filter(status="cancelled").count(),
+        }
 
     @staticmethod
     def get_customer_order_detail(user, pk):

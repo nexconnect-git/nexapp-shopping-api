@@ -50,6 +50,22 @@ class CustomerOrderIssueListCreateView(APIView):
         return Response(OrderIssueSerializer(issue).data, status=status.HTTP_201_CREATED)
 
 
+class IssueOptionsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response({
+            "issue_types": [
+                {"value": value, "label": label}
+                for value, label in OrderIssue.ISSUE_TYPE_CHOICES
+            ],
+            "statuses": [
+                {"value": value, "label": label}
+                for value, label in OrderIssue.STATUS_CHOICES
+            ],
+        })
+
+
 class CustomerOrderIssueDetailView(APIView):
     permission_classes = [IsAuthenticated]
 

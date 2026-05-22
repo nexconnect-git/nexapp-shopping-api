@@ -46,7 +46,9 @@ class OrderSerializer(serializers.ModelSerializer):
             "vendor_name", "vendor_info", "delivery_address", "delivery_partner",
             "delivery_partner_info", "status", "assignment_status", "invoice_id",
             "has_rating", "payment_method", "subtotal", "delivery_fee", "discount",
-            "coupon_discount", "wallet_discount", "total",
+            "product_discount", "coupon_discount", "platform_fee", "packaging_fee",
+            "small_cart_fee", "tax_amount", "surge_fee", "wallet_discount",
+            "loyalty_discount", "total", "price_breakup", "payment_metadata",
             "notes", "pickup_otp", "delivery_otp", "delivery_photo",
             "estimated_delivery_time", "actual_delivery_time",
             "delivery_latitude", "delivery_longitude", "delivery_tip",
@@ -180,6 +182,8 @@ class CreateOrderSerializer(serializers.Serializer):
     loyalty_points = serializers.IntegerField(required=False, default=0, min_value=0)
     scheduled_for = serializers.DateTimeField(required=False, allow_null=True, default=None)
     confirm_far_delivery = serializers.BooleanField(required=False, default=False)
+    cod_upi_confirmed = serializers.BooleanField(required=False, default=False)
+    client_price_breakup = serializers.JSONField(required=False, default=dict)
     # Optional: pre-verified Razorpay payment proof (from the new initiate-first flow)
     razorpay_order_id = serializers.CharField(required=False, allow_blank=True, default="")
     razorpay_payment_id = serializers.CharField(required=False, allow_blank=True, default="")

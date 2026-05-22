@@ -10,6 +10,7 @@ Covers:
   - UpdateOrderStatusAction no longer triggers search on ready
 """
 
+from datetime import time
 from unittest.mock import patch, MagicMock
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -36,7 +37,8 @@ def make_vendor_user(username="vendor1"):
     vendor = Vendor.objects.create(
         user=user, store_name="Test Store", phone="1234567890",
         email=f"{username}@test.com", address="123 St", city="City",
-        state="ST", postal_code="00000", status="approved",
+        state="ST", postal_code="560001", latitude="12.9716", longitude="77.5946", status="approved",
+        opening_time=time(0, 0), closing_time=time(23, 59),
     )
     return user, vendor
 
@@ -51,9 +53,9 @@ def make_customer_user(username="customer1"):
 def make_order(vendor, customer, status="ready"):
     from accounts.models import Address
     addr = Address.objects.create(
-        user=customer, full_name="Test", phone="000",
+        user=customer, full_name="Test", phone="9876543210",
         address_line1="1 Main St", city="City", state="ST",
-        postal_code="00000",
+        postal_code="560001", latitude="12.9716", longitude="77.5946",
     )
     return Order.objects.create(
         customer=customer,
@@ -371,11 +373,13 @@ class VendorAutoAcceptTests(TestCase):
         customer = make_customer_user("auto_customer")
         address = customer.addresses.create(
             full_name="Auto Customer",
-            phone="000",
+            phone="9876543210",
             address_line1="1 Main St",
             city="City",
             state="ST",
-            postal_code="00000",
+            postal_code="560001",
+            latitude="12.9716",
+            longitude="77.5946",
         )
         product = Product.objects.create(
             vendor=vendor,
@@ -387,7 +391,7 @@ class VendorAutoAcceptTests(TestCase):
         cart = Cart.objects.create(user=customer)
         CartItem.objects.create(cart=cart, product=product, quantity=1)
 
-        orders = CreateOrdersFromCartAction().execute(customer, str(address.id))
+        orders = CreateOrdersFromCartAction().execute(customer, str(address.id), cod_upi_confirmed=True)
 
         self.assertEqual(len(orders), 1)
         orders[0].refresh_from_db()

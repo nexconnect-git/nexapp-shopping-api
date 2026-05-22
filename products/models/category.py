@@ -11,7 +11,7 @@ class Category(models.Model):
     icon_name = models.CharField(
         max_length=80,
         blank=True,
-        help_text="Material icon name used by customer apps when no category image is configured.",
+        help_text="Admin configured customer-app icon. Prefer an emoji; image URLs and Material icon names are also supported.",
     )
     parent = models.ForeignKey(
         'self',

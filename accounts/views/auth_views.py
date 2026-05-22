@@ -1,7 +1,5 @@
 """Auth views for registration, login, token refresh, and initial setup."""
 
-import hmac
-
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 from django_ratelimit.decorators import ratelimit
@@ -19,12 +17,12 @@ from accounts.actions.auth_actions import (
     RegisterAction,
     RequestMobileOTPAction,
     SendVerificationEmailAction,
+    SetupSuperUserAction,
     VerifyMobileOTPAction,
     VerifyEmailAction,
 )
 from accounts.data.user_repository import UserRepository
 from accounts.helpers.token_helpers import clear_refresh_cookie, set_refresh_cookie
-from accounts.serializers.user_serializers import AdminUserSerializer, UserProfileSerializer
 
 
 @method_decorator(ratelimit(key='ip', rate='10/h', method='POST', block=True), name='post')
@@ -201,50 +199,17 @@ class CookieTokenRefreshView(APIView):
 
 @method_decorator(ratelimit(key='ip', rate='5/h', method='POST', block=True), name='post')
 class SetupSuperUserView(APIView):
-    """Create the first superuser only while bootstrap setup is enabled."""
+    """Create the first superuser only when no superuser exists."""
 
     permission_classes = [AllowAny]
 
-    @staticmethod
-    def _get_setup_token(request):
-        header_token = request.headers.get('X-Setup-Token', '').strip()
-        body_token = str(request.data.get('setup_token', '')).strip()
-        return header_token or body_token
-
-    @staticmethod
-    def _is_valid_setup_token(candidate_token):
-        configured_token = settings.INITIAL_SUPERUSER_SETUP_TOKEN.strip()
-        return bool(candidate_token and configured_token and hmac.compare_digest(candidate_token, configured_token))
-
     def get(self, _request):
-        if not settings.INITIAL_SUPERUSER_SETUP_ENABLED:
-            return Response({'detail': 'Initial setup is disabled.'}, status=status.HTTP_404_NOT_FOUND)
-
         has_superuser = UserRepository.superuser_exists()
         return Response({'needs_setup': not has_superuser})
 
     def post(self, request):
-        if not settings.INITIAL_SUPERUSER_SETUP_ENABLED:
-            return Response({'detail': 'Initial setup is disabled.'}, status=status.HTTP_404_NOT_FOUND)
-
-        if UserRepository.superuser_exists():
-            return Response(
-                {'error': 'A superuser already exists in the system.'},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        if not self._is_valid_setup_token(self._get_setup_token(request)):
-            return Response(
-                {'error': 'A valid setup token is required.'},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        data = request.data.copy()
-        data['account_type'] = 'superuser'
-        data.pop('setup_token', None)
-
-        serializer = AdminUserSerializer(data=data)
-        if serializer.is_valid():
-            user = serializer.save()
-            return Response(UserProfileSerializer(user).data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            result = SetupSuperUserAction(data=request.data).execute()
+            return Response(result, status=status.HTTP_201_CREATED)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_403_FORBIDDEN)
