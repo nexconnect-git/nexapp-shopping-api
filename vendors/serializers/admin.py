@@ -1,4 +1,5 @@
 import uuid
+import json
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
@@ -6,7 +7,7 @@ from rest_framework import serializers
 from accounts.data.user_repository import UserRepository
 from helpers.phone_helpers import normalize_phone
 from helpers.validators import validate_pan, validate_ifsc, validate_gstin
-from vendors.models import Vendor, VendorOnboarding, VendorBankDetails, VendorServiceableArea, VendorHoliday, VendorAuditLog
+from vendors.models import Vendor, VendorOnboarding, VendorBankDetails, VendorServiceableArea, VendorHoliday, VendorAuditLog, VENDOR_TYPE_CHOICES
 from .public import VendorSerializer
 
 User = get_user_model()
@@ -34,6 +35,20 @@ class AdminVendorSerializer(VendorSerializer):
                 instance.user.save(update_fields=list(set(user_updated)))
         return super().update(instance, validated_data)
 
+
+class JSONListField(serializers.ListField):
+    def to_internal_value(self, data):
+        if isinstance(data, str):
+            if not data.strip():
+                data = []
+            else:
+                try:
+                    data = json.loads(data)
+                except json.JSONDecodeError as exc:
+                    raise serializers.ValidationError("Expected a valid JSON list.") from exc
+        return super().to_internal_value(data)
+
+
 class VendorFullOnboardSerializer(serializers.Serializer):
     # Step 1
     username = serializers.CharField()
@@ -43,7 +58,10 @@ class VendorFullOnboardSerializer(serializers.Serializer):
     
     # Step 2
     store_name = serializers.CharField(max_length=200)
-    vendor_type = serializers.ChoiceField(choices=["individual", "company", "partnership"], default="individual")
+    vendor_type = serializers.ChoiceField(
+        choices=[choice[0] for choice in VENDOR_TYPE_CHOICES],
+        default="retail_store",
+    )
     description = serializers.CharField(required=False, default="", allow_blank=True)
     phone = serializers.CharField(max_length=30)
     email = serializers.EmailField()
@@ -51,8 +69,11 @@ class VendorFullOnboardSerializer(serializers.Serializer):
     city = serializers.CharField(max_length=100, required=False, default="", allow_blank=True)
     state = serializers.CharField(max_length=100, required=False, default="", allow_blank=True)
     postal_code = serializers.CharField(max_length=10, required=False, default="", allow_blank=True)
+    country = serializers.CharField(max_length=2, required=False, default="IN", allow_blank=True)
     latitude = serializers.DecimalField(max_digits=11, decimal_places=8, required=False, default=0)
     longitude = serializers.DecimalField(max_digits=11, decimal_places=8, required=False, default=0)
+    logo = serializers.ImageField(required=False, allow_null=True)
+    banner = serializers.ImageField(required=False, allow_null=True)
     gst_registered = serializers.BooleanField(default=False)
     
     # Step 3
@@ -65,7 +86,7 @@ class VendorFullOnboardSerializer(serializers.Serializer):
     cin_udyam = serializers.CharField(max_length=50, required=False, default="", allow_blank=True)
     fssai_license = serializers.CharField(max_length=50, required=False, default="", allow_blank=True)
     trademark_number = serializers.CharField(max_length=50, required=False, default="", allow_blank=True)
-    business_addresses = serializers.ListField(child=serializers.DictField(), required=False, default=list)
+    business_addresses = JSONListField(child=serializers.DictField(), required=False, default=list)
     
     # Step 4
     account_holder_name = serializers.CharField(required=False, default="", allow_blank=True)
@@ -83,7 +104,7 @@ class VendorFullOnboardSerializer(serializers.Serializer):
     dispatch_sla_hours = serializers.IntegerField(default=24, required=False)
     return_policy = serializers.CharField(required=False, default="", allow_blank=True)
     packaging_preferences = serializers.CharField(required=False, default="", allow_blank=True)
-    serviceable_pincodes = serializers.ListField(child=serializers.DictField(), required=False, default=list)
+    serviceable_pincodes = JSONListField(child=serializers.DictField(), required=False, default=list)
     
     # Step 6
     opening_time = serializers.TimeField(default="09:00", required=False)
@@ -95,7 +116,7 @@ class VendorFullOnboardSerializer(serializers.Serializer):
     vendor_tier = serializers.ChoiceField(choices=["basic", "silver", "gold", "platinum"], default="basic", required=False)
     is_open = serializers.BooleanField(default=True, required=False)
     is_featured = serializers.BooleanField(default=False, required=False)
-    holidays = serializers.ListField(child=serializers.DictField(), required=False, default=list)
+    holidays = JSONListField(child=serializers.DictField(), required=False, default=list)
 
     def validate_username(self, value):
         value = value.strip()
@@ -133,7 +154,8 @@ class VendorFullOnboardSerializer(serializers.Serializer):
                 first_name=validated_data.get("first_name", ""),
                 last_name=validated_data.get("last_name", ""),
                 phone=validated_data.get("phone", ""),
-                role="vendor"
+                role="vendor",
+                country=validated_data.get("country") or "IN",
             )
             if auto_pw:
                 user.force_password_change = True
@@ -143,7 +165,7 @@ class VendorFullOnboardSerializer(serializers.Serializer):
             vendor = Vendor.objects.create(
                 user=user,
                 store_name=validated_data["store_name"],
-                vendor_type=validated_data.get("vendor_type", "individual"),
+                vendor_type=validated_data.get("vendor_type", "retail_store"),
                 vendor_tier=validated_data.get("vendor_tier", "basic"),
                 description=validated_data.get("description", ""),
                 phone=validated_data.get("phone", ""),
@@ -154,6 +176,8 @@ class VendorFullOnboardSerializer(serializers.Serializer):
                 postal_code=validated_data.get("postal_code", ""),
                 latitude=validated_data.get("latitude", 0),
                 longitude=validated_data.get("longitude", 0),
+                logo=validated_data.get("logo"),
+                banner=validated_data.get("banner"),
                 is_open=validated_data.get("is_open", True),
                 opening_time=validated_data.get("opening_time", "09:00"),
                 closing_time=validated_data.get("closing_time", "22:00"),

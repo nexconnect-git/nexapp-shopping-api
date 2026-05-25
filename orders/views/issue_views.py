@@ -6,11 +6,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsAdminRole
+from helpers.cache_helpers import cached_api_response
+from helpers.validators import validate_document_upload
 from orders.actions.ordering import AddIssueMessageAction
 from orders.data.issue_repo import IssueRepository
 from orders.models import IssueMessage, OrderIssue, Order, OrderIssueAttachment
 from orders.serializers import OrderIssueAttachmentSerializer, OrderIssueSerializer
-from helpers.validators import validate_document_upload
 
 
 class CustomerOrderIssueListCreateView(APIView):
@@ -54,6 +55,15 @@ class IssueOptionsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        return cached_api_response(
+            request,
+            'orders:issue_options',
+            600,
+            lambda: self._get_uncached(request),
+            include_user=False,
+        )
+
+    def _get_uncached(self, request):
         return Response({
             "issue_types": [
                 {"value": value, "label": label}

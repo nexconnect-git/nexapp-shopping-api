@@ -1,11 +1,24 @@
 import uuid
 from django.db import models
 from accounts.models import User
+from helpers.upload_paths import UserDateUploadPath
 
 VENDOR_TYPE_CHOICES = (
-    ('individual', 'Individual'),
-    ('company', 'Company'),
-    ('partnership', 'Partnership'),
+    ('wholesale_store', 'Wholesale Store'),
+    ('retail_store', 'Retail Store'),
+    ('kirana_store', 'Kirana Store'),
+    ('supermarket', 'Supermarket'),
+    ('hypermarket', 'Hypermarket'),
+    ('department_store', 'Department Store'),
+    ('specialty_store', 'Specialty Store'),
+    ('convenience_store', 'Convenience Store'),
+    ('discount_store', 'Discount Store'),
+    ('franchise_store', 'Franchise Store'),
+    ('chain_store', 'Chain Store'),
+    ('online_store', 'Online Store / E-commerce'),
+    ('street_vendor', 'Street Vendor / Hawker'),
+    ('mandi_market_yard', 'Mandi / Market Yard'),
+    ('b2b_store', 'B2B Store'),
 )
 
 FULFILLMENT_TYPE_CHOICES = (
@@ -36,8 +49,8 @@ class Vendor(models.Model):
     # ── Core store info ───────────────────────────────────────────────────────
     store_name   = models.CharField(max_length=200)
     description  = models.TextField(blank=True)
-    logo         = models.ImageField(upload_to='vendor_logos/',   blank=True, null=True)
-    banner       = models.ImageField(upload_to='vendor_banners/', blank=True, null=True)
+    logo         = models.ImageField(upload_to=UserDateUploadPath('profile_image'), blank=True, null=True)
+    banner       = models.ImageField(upload_to=UserDateUploadPath('cover_image'), blank=True, null=True)
     phone        = models.CharField(max_length=15)
     email        = models.EmailField()
     address      = models.CharField(max_length=255)
@@ -48,7 +61,7 @@ class Vendor(models.Model):
     longitude    = models.DecimalField(max_digits=11, decimal_places=8, default=0)
 
     # ── Classification ────────────────────────────────────────────────────────
-    vendor_type  = models.CharField(max_length=20, choices=VENDOR_TYPE_CHOICES, default='individual', blank=True)
+    vendor_type  = models.CharField(max_length=32, choices=VENDOR_TYPE_CHOICES, default='retail_store', blank=True)
     vendor_tier  = models.CharField(max_length=20, choices=VENDOR_TIER_CHOICES, default='basic', blank=True)
 
     # ── Approval / ratings ────────────────────────────────────────────────────

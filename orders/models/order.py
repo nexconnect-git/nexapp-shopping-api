@@ -1,6 +1,7 @@
 import uuid
 from django.db import models
 from accounts.models import User, Address
+from helpers.upload_paths import UserDateUploadPath
 from products.models import Product
 from vendors.models import Vendor
 
@@ -69,8 +70,8 @@ class Order(models.Model):
     notes = models.TextField(blank=True)
     pickup_otp = models.CharField(max_length=6, blank=True, default='')
     delivery_otp = models.CharField(max_length=6, blank=True, default='')
-    delivery_photo = models.ImageField(upload_to='delivery_photos/', null=True, blank=True)
-    transaction_photo = models.ImageField(upload_to='transaction_photos/', null=True, blank=True)
+    delivery_photo = models.ImageField(upload_to=UserDateUploadPath('delivery_proof'), null=True, blank=True)
+    transaction_photo = models.ImageField(upload_to=UserDateUploadPath('transaction_proof'), null=True, blank=True)
     estimated_delivery_time = models.IntegerField(help_text='Estimated minutes', null=True, blank=True)
     actual_delivery_time = models.DateTimeField(null=True, blank=True)
     delivery_latitude = models.DecimalField(max_digits=11, decimal_places=8, null=True, blank=True)

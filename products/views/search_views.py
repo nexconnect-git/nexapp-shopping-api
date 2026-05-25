@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 
 from accounts.models import Address
 from helpers.delivery_quotes import quote_vendor_delivery
+from helpers.cache_helpers import cached_api_response
 from products.models import Product
 from products.serializers import ProductSerializer
 from vendors.serializers.public import VendorListSerializer
@@ -80,6 +81,15 @@ class ProductSearchByLocationView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
+        return cached_api_response(
+            request,
+            'products:search_by_location',
+            60,
+            lambda: self._get_uncached(request),
+            include_user=False,
+        )
+
+    def _get_uncached(self, request):
         terms = _search_terms(request)
         if not terms:
             return Response({"count": 0, "results": []})

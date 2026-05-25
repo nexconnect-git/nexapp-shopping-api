@@ -6,6 +6,8 @@ media/
 .idea/
 .vscode/
 .env
+*.env
+!.env.example
 venv/
 env/
 *.log
@@ -20,10 +22,10 @@ tests/
 **/test_*.py
 **/*_test.py
 !helpers/tests.py
+!files/tests.py
 
 # Seeding files
 products/management/commands/seed_customer_realtime_data.py
 # Agent files
 .agent/
 .codex-artifacts/
-

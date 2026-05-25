@@ -1,6 +1,7 @@
 import uuid
 from django.db import models
 from accounts.models import User
+from helpers.upload_paths import UserDateUploadPath
 
 
 class DeliveryPartner(models.Model):
@@ -21,7 +22,7 @@ class DeliveryPartner(models.Model):
     vehicle_type = models.CharField(max_length=20, choices=VEHICLE_CHOICES)
     vehicle_number = models.CharField(max_length=20, blank=True)
     license_number = models.CharField(max_length=50)
-    id_proof = models.ImageField(upload_to='delivery/id_proofs/', blank=True, null=True)
+    id_proof = models.ImageField(upload_to=UserDateUploadPath('delivery_document'), blank=True, null=True)
     is_approved = models.BooleanField(default=False)
     is_available = models.BooleanField(default=False)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='offline')

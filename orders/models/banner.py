@@ -3,6 +3,8 @@
 from django.db import models
 import uuid
 
+from helpers.upload_paths import UserDateUploadPath
+
 
 class PlatformBanner(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -11,7 +13,7 @@ class PlatformBanner(models.Model):
     badge_text = models.CharField(max_length=40, blank=True)
     cta_label = models.CharField(max_length=40, default='Order Now')
     cta_url = models.CharField(max_length=255, default='/shops')
-    image = models.ImageField(upload_to='banners/', null=True, blank=True)
+    image = models.ImageField(upload_to=UserDateUploadPath('banner_image'), null=True, blank=True)
     bg_gradient = models.CharField(
         max_length=120,
         default='linear-gradient(135deg,#6c63ff,#5046e4)',

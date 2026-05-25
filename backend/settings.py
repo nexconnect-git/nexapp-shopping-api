@@ -4,9 +4,29 @@ from pathlib import Path
 from datetime import timedelta
 from django.core.exceptions import ImproperlyConfigured
 
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    def load_dotenv(*_args, **_kwargs):
+        return False
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-DEBUG = os.environ.get('DEBUG', 'False') == 'True'
+load_dotenv(BASE_DIR.parent / '.env')
+load_dotenv(BASE_DIR / '.env')
+
+
+def env_bool(name, default=False):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+DJANGO_ENV = os.environ.get('DJANGO_ENV', 'local').strip().lower()
+
+DEBUG = env_bool('DEBUG', False)
+PUBLIC_BACKEND_URL = os.environ.get('PUBLIC_BACKEND_URL', '').rstrip('/')
 
 SECRET_KEY = os.environ.get('SECRET_KEY')
 if not SECRET_KEY:
@@ -44,6 +64,7 @@ INSTALLED_APPS = [
     'notifications',
     'support',
     'invoices',
+    'files',
     'django_rq',
     'channels',
 ]
@@ -112,31 +133,88 @@ USE_TZ = True
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-# Media: use S3 when USE_S3=True, otherwise local filesystem
-USE_S3 = os.environ.get('USE_S3', 'False') == 'True'
+# Media: use S3 when USE_S3=true, otherwise local filesystem.
+USE_S3 = env_bool('USE_S3', False)
+FILE_UPLOAD_MAX_SIZE = int(os.environ.get('FILE_UPLOAD_MAX_SIZE', 10 * 1024 * 1024))
+FILE_UPLOAD_ALLOWED_CONTENT_TYPES = [
+    content_type.strip()
+    for content_type in os.environ.get(
+        'FILE_UPLOAD_ALLOWED_CONTENT_TYPES',
+        ','.join([
+            'image/jpeg',
+            'image/png',
+            'image/gif',
+            'image/webp',
+            'application/pdf',
+            'text/plain',
+            'text/csv',
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/vnd.ms-excel',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]),
+    ).split(',')
+    if content_type.strip()
+]
 
 if USE_S3:
-    AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID', '')
-    AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY', '')
+    AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID') or None
+    AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY') or None
     AWS_STORAGE_BUCKET_NAME = os.environ.get('AWS_STORAGE_BUCKET_NAME', '')
-    AWS_S3_ENDPOINT_URL = os.environ.get('AWS_S3_ENDPOINT_URL', '')  # For R2: https://<acct>.r2.cloudflarestorage.com
-    AWS_S3_REGION_NAME = os.environ.get('AWS_S3_REGION_NAME', 'auto')
+    AWS_S3_REGION_NAME = os.environ.get('AWS_S3_REGION_NAME', 'ap-southeast-2')
+    AWS_LOCATION = os.environ.get('AWS_LOCATION', 'media').strip('/') or 'media'
+    AWS_S3_ENDPOINT_URL = os.environ.get('AWS_S3_ENDPOINT_URL') or None
     AWS_S3_FILE_OVERWRITE = False
     AWS_DEFAULT_ACL = None
-    AWS_S3_CUSTOM_DOMAIN = os.environ.get('AWS_S3_CUSTOM_DOMAIN', '')
+    AWS_QUERYSTRING_AUTH = True
+    AWS_S3_SIGNATURE_VERSION = 's3v4'
+    AWS_S3_CUSTOM_DOMAIN = os.environ.get('AWS_S3_CUSTOM_DOMAIN') or None
+
+    if not AWS_STORAGE_BUCKET_NAME:
+        raise ImproperlyConfigured('AWS_STORAGE_BUCKET_NAME must be set when USE_S3=true.')
+
+    _s3_options = {
+        'bucket_name': AWS_STORAGE_BUCKET_NAME,
+        'region_name': AWS_S3_REGION_NAME,
+        'default_acl': AWS_DEFAULT_ACL,
+        'file_overwrite': AWS_S3_FILE_OVERWRITE,
+        'location': AWS_LOCATION,
+        'querystring_auth': AWS_QUERYSTRING_AUTH,
+    }
+    if AWS_ACCESS_KEY_ID:
+        _s3_options['access_key'] = AWS_ACCESS_KEY_ID
+    if AWS_SECRET_ACCESS_KEY:
+        _s3_options['secret_key'] = AWS_SECRET_ACCESS_KEY
+    if AWS_S3_ENDPOINT_URL:
+        _s3_options['endpoint_url'] = AWS_S3_ENDPOINT_URL
+    if AWS_S3_CUSTOM_DOMAIN:
+        _s3_options['custom_domain'] = AWS_S3_CUSTOM_DOMAIN
 
     STORAGES = {
         'default': {
-            'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage',
+            'BACKEND': 'storages.backends.s3.S3Storage',
+            'OPTIONS': _s3_options,
         },
         'staticfiles': {
             'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
         },
     }
-    MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/' if AWS_S3_CUSTOM_DOMAIN else f'{AWS_S3_ENDPOINT_URL}/{AWS_STORAGE_BUCKET_NAME}/'
+    MEDIA_URL = (
+        f'https://{AWS_S3_CUSTOM_DOMAIN}/{AWS_LOCATION}/'
+        if AWS_S3_CUSTOM_DOMAIN
+        else f'https://{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com/{AWS_LOCATION}/'
+    )
 else:
-    MEDIA_URL = 'media/'
+    MEDIA_URL = '/media/'
     MEDIA_ROOT = BASE_DIR / 'media'
+    STORAGES = {
+        'default': {
+            'BACKEND': 'django.core.files.storage.FileSystemStorage',
+        },
+        'staticfiles': {
+            'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
+        },
+    }
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -258,6 +336,9 @@ CHANNEL_LAYERS = {
 # ---------------------------------------------------------------------------
 # Cache (django-redis)
 # ---------------------------------------------------------------------------
+
+API_PUBLIC_CACHE_TTL_SECONDS = int(os.environ.get('API_PUBLIC_CACHE_TTL_SECONDS', 120))
+API_REFERENCE_CACHE_TTL_SECONDS = int(os.environ.get('API_REFERENCE_CACHE_TTL_SECONDS', 300))
 
 CACHES = {
     'default': {

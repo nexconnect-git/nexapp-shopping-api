@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import Address
+from helpers.cache_helpers import cached_api_response
 from helpers.delivery_quotes import quote_vendor_delivery
 from orders.data.coupon_repo import CouponRepository
 from orders.models import Cart, Coupon, CouponUsage, PlatformSetting
@@ -115,6 +116,15 @@ class ValidateCouponView(APIView):
 class CustomerCouponListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = CouponSerializer
+
+    def list(self, request, *args, **kwargs):
+        return cached_api_response(
+            request,
+            'orders:customer_coupons',
+            120,
+            lambda: super(CustomerCouponListView, self).list(request, *args, **kwargs),
+            include_user=False,
+        )
 
     def get_queryset(self):
         return CouponRepository.get_valid_customer_coupons()

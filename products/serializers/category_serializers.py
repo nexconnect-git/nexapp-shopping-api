@@ -1,11 +1,13 @@
 from rest_framework import serializers
 
+from helpers.serializer_fields import SafeImageField
 from products.models import Category
 
 
 class CategorySerializer(serializers.ModelSerializer):
     """Full serializer for Category including nested children and metadata."""
 
+    image = SafeImageField(required=False, allow_null=True)
     children = serializers.SerializerMethodField()
     parent_name = serializers.SerializerMethodField()
     subcategory_count = serializers.SerializerMethodField()

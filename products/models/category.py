@@ -1,13 +1,15 @@
 import uuid
 from django.db import models
 
+from helpers.upload_paths import UserDateUploadPath
+
 
 class Category(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100)
     slug = models.SlugField(unique=True)
     description = models.TextField(blank=True)
-    image = models.ImageField(upload_to='categories/', blank=True, null=True)
+    image = models.ImageField(upload_to=UserDateUploadPath('category_image'), blank=True, null=True)
     icon_name = models.CharField(
         max_length=80,
         blank=True,

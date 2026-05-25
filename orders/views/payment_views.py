@@ -11,6 +11,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from helpers.cache_helpers import cached_api_response
 from helpers.delivery_quotes import FarDeliveryConfirmationRequired
 from orders.actions.checkout import COD_UPI_CONFIRMATION_MESSAGE, calculate_checkout_preview
 from orders.actions.payment_actions import CreateRazorpayOrderAction, VerifyRazorpayPaymentAction
@@ -26,6 +27,15 @@ class PaymentMethodsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        return cached_api_response(
+            request,
+            'orders:payment_methods',
+            300,
+            lambda: self._get_uncached(request),
+            include_user=False,
+        )
+
+    def _get_uncached(self, request):
         setting = PlatformSetting.get_setting()
         methods = setting.normalized_payment_methods()
         labels = {

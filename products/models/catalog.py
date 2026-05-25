@@ -3,6 +3,7 @@ import uuid
 from django.conf import settings
 from django.db import models
 
+from helpers.upload_paths import UserDateUploadPath
 from products.models.category import Category
 from vendors.models import Vendor
 
@@ -50,7 +51,7 @@ class CatalogProductImage(models.Model):
         on_delete=models.CASCADE,
         related_name="images",
     )
-    image = models.ImageField(upload_to="catalog-products/")
+    image = models.ImageField(upload_to=UserDateUploadPath("product_image"))
     is_primary = models.BooleanField(default=False)
     display_order = models.IntegerField(default=0)
 

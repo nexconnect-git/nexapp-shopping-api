@@ -4,6 +4,7 @@ from rest_framework import generics
 from rest_framework.permissions import AllowAny
 
 from accounts.models import Address
+from helpers.cache_helpers import cached_api_response
 from products.serializers.category_serializers import CategorySerializer
 from products.data.category_repository import CategoryRepository
 
@@ -32,6 +33,15 @@ def _build_request_address(request) -> Address | None:
 class CategoryListView(generics.ListAPIView):
     permission_classes = [AllowAny]
     serializer_class = CategorySerializer
+
+    def list(self, request, *args, **kwargs):
+        return cached_api_response(
+            request,
+            'products:categories',
+            300,
+            lambda: super(CategoryListView, self).list(request, *args, **kwargs),
+            include_user=False,
+        )
 
     def get_queryset(self):
         address = _build_request_address(self.request)

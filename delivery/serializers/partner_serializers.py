@@ -2,13 +2,16 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
 from accounts.data.user_repository import UserRepository
+from helpers.media_helpers import safe_media_url
 from delivery.models import DeliveryPartner
 from helpers.phone_helpers import normalize_phone
+from helpers.serializer_fields import SafeImageField
 
 User = get_user_model()
 
 
 class DeliveryPartnerSerializer(serializers.ModelSerializer):
+    id_proof = SafeImageField(required=False, allow_null=True)
     user = serializers.SerializerMethodField()
 
     class Meta:
@@ -26,7 +29,7 @@ class DeliveryPartnerSerializer(serializers.ModelSerializer):
         ]
 
     def get_user(self, obj):
-        avatar = obj.user.avatar.url if obj.user.avatar else None
+        avatar = safe_media_url(obj.user.avatar, request=self.context.get('request'))
         data = {
             'id': obj.user.id,
             'username': obj.user.username,

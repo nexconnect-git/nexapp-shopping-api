@@ -1,6 +1,7 @@
 import uuid
 from django.db import models
 from accounts.models import User
+from helpers.upload_paths import UserDateUploadPath
 from vendors.models import Vendor
 from orders.models import Order
 
@@ -18,7 +19,7 @@ class Invoice(models.Model):
     order = models.ForeignKey(Order, on_delete=models.SET_NULL, null=True, blank=True, related_name='invoices')
     vendor = models.ForeignKey(Vendor, on_delete=models.SET_NULL, null=True, blank=True, related_name='invoices')
     recipient = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='invoices')
-    pdf_file = models.FileField(upload_to='invoices/', null=True, blank=True)
+    pdf_file = models.FileField(upload_to=UserDateUploadPath('invoice'), null=True, blank=True)
     amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     tax_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     notes = models.TextField(blank=True)

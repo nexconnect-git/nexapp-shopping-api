@@ -2,6 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from accounts.data.user_repository import UserRepository
 from helpers.phone_helpers import normalize_phone
+from helpers.serializer_fields import SafeImageField
 from helpers.validators import validate_image_upload
 
 User = get_user_model()
@@ -66,6 +67,8 @@ class MobileOTPVerifySerializer(serializers.Serializer):
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
+    avatar = SafeImageField(required=False, allow_null=True)
+
     class Meta:
         model = User
         fields = ['id', 'username', 'email', 'first_name', 'last_name',
@@ -107,6 +110,7 @@ class AdminUserUpdateSerializer(serializers.ModelSerializer):
 
 
 class AdminUserSerializer(serializers.ModelSerializer):
+    avatar = SafeImageField(required=False, allow_null=True)
     password = serializers.CharField(write_only=True, min_length=8)
     account_type = serializers.ChoiceField(
         choices=[('admin', 'Admin'), ('superuser', 'Superuser')],

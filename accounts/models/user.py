@@ -2,6 +2,8 @@ import uuid
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 
+from helpers.upload_paths import UserDateUploadPath
+
 
 class User(AbstractUser):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -55,7 +57,7 @@ class User(AbstractUser):
     )
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='customer')
     phone = models.CharField(max_length=15, blank=True)
-    avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
+    avatar = models.ImageField(upload_to=UserDateUploadPath('profile_image'), blank=True, null=True)
     is_verified = models.BooleanField(default=False)
     force_password_change = models.BooleanField(default=False)
     temp_password = models.CharField(max_length=128, blank=True, default='')

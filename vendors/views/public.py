@@ -11,6 +11,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.actions.admin_actions import CheckUserAvailabilityAction
 from accounts.models import Address
+from helpers.cache_helpers import cached_api_response
 from accounts.serializers import UserProfileSerializer
 from helpers.delivery_quotes import quote_vendor_delivery
 from helpers.vendor_hours import is_vendor_open_now
@@ -190,6 +191,15 @@ class VendorListView(APIView):
     pagination_class = StandardPagination
 
     def get(self, request):
+        return cached_api_response(
+            request,
+            'vendors:list',
+            60,
+            lambda: self._get_uncached(request),
+            include_user=True,
+        )
+
+    def _get_uncached(self, request):
         repo = VendorRepository()
         address = _build_request_address(request)
         search = request.query_params.get("search", "").strip()
@@ -291,6 +301,15 @@ class VendorDetailView(generics.RetrieveAPIView):
         return VendorRepository().filter(status="approved")
 
     def retrieve(self, request, *args, **kwargs):
+        return cached_api_response(
+            request,
+            f'vendors:detail:{kwargs.get("pk")}',
+            90,
+            lambda: self._retrieve_uncached(request, *args, **kwargs),
+            include_user=False,
+        )
+
+    def _retrieve_uncached(self, request, *args, **kwargs):
         vendor = self.get_object()
         vendor_data = VendorSerializer(vendor, context={"request": request}).data
         product_search = request.query_params.get("product_search") or request.query_params.get("q")
@@ -354,6 +373,15 @@ class NearbyVendorsView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
+        return cached_api_response(
+            request,
+            'vendors:nearby',
+            60,
+            lambda: self._get_uncached(request),
+            include_user=True,
+        )
+
+    def _get_uncached(self, request):
         address = _build_request_address(request)
         if not address:
             return Response({"error": "lat and lng reqd."}, status=status.HTTP_400_BAD_REQUEST)
@@ -373,6 +401,15 @@ class VendorRecommendationsView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, pk):
+        return cached_api_response(
+            request,
+            f'vendors:recommendations:{pk}',
+            90,
+            lambda: self._get_uncached(request, pk),
+            include_user=True,
+        )
+
+    def _get_uncached(self, request, pk):
         try:
             vendor = Vendor.objects.get(pk=pk, status="approved")
         except Vendor.DoesNotExist:

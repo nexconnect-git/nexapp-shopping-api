@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.utils.text import slugify
 
+from helpers.serializer_fields import SafeImageField
 from products.models import (
     CatalogProduct,
     CatalogProductImage,
@@ -14,6 +15,8 @@ from products.serializers.category_serializers import CategorySerializer
 
 
 class CatalogProductImageSerializer(serializers.ModelSerializer):
+    image = SafeImageField(required=False, allow_null=True)
+
     class Meta:
         model = CatalogProductImage
         fields = ["id", "image", "is_primary", "display_order"]

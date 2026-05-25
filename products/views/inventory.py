@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 
 from accounts.permissions import IsApprovedVendor
+from helpers.cache_helpers import cached_api_response
 from products.serializers.product_serializers import ProductSerializer, ProductListSerializer
 from products.serializers.image_serializers import ProductImageSerializer
 from products.data.product_repository import ProductRepository
@@ -15,6 +16,15 @@ from products.models import Product
 class ProductListView(generics.ListAPIView):
     permission_classes = [AllowAny]
     serializer_class = ProductListSerializer
+
+    def list(self, request, *args, **kwargs):
+        return cached_api_response(
+            request,
+            'products:list',
+            120,
+            lambda: super(ProductListView, self).list(request, *args, **kwargs),
+            include_user=False,
+        )
 
     def get_queryset(self):
         return ProductRepository.filter(
@@ -30,12 +40,30 @@ class FeaturedProductsView(generics.ListAPIView):
     permission_classes = [AllowAny]
     serializer_class = ProductListSerializer
 
+    def list(self, request, *args, **kwargs):
+        return cached_api_response(
+            request,
+            'products:featured',
+            120,
+            lambda: super(FeaturedProductsView, self).list(request, *args, **kwargs),
+            include_user=False,
+        )
+
     def get_queryset(self):
         return ProductRepository.get_featured()
 
 class ProductDetailView(generics.RetrieveAPIView):
     permission_classes = [AllowAny]
     serializer_class = ProductSerializer
+
+    def retrieve(self, request, *args, **kwargs):
+        return cached_api_response(
+            request,
+            f'products:detail:{kwargs.get("pk")}',
+            120,
+            lambda: super(ProductDetailView, self).retrieve(request, *args, **kwargs),
+            include_user=False,
+        )
 
     def get_queryset(self):
         return ProductRepository.get_all()

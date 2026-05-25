@@ -6,18 +6,24 @@ from rest_framework.views import APIView
 from rest_framework import serializers, status
 
 from accounts.permissions import IsAdminRole
+from helpers.cache_helpers import cached_api_response
+from helpers.serializer_fields import SafeImageField
+from helpers.validators import validate_image_upload
 from orders.data.banner_repo import PlatformBannerRepository
 from orders.models import PlatformBanner
-from helpers.validators import validate_image_upload
 
 
 class PlatformBannerSerializer(serializers.ModelSerializer):
+    image = SafeImageField(read_only=True)
+
     class Meta:
         model = PlatformBanner
         fields = ['id', 'title', 'subtitle', 'badge_text', 'cta_label', 'cta_url', 'image', 'bg_gradient']
 
 
 class AdminPlatformBannerSerializer(serializers.ModelSerializer):
+    image = SafeImageField(required=False, allow_null=True)
+
     class Meta:
         model = PlatformBanner
         fields = [
@@ -40,6 +46,15 @@ class BannerListView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
+        return cached_api_response(
+            request,
+            'orders:banners',
+            300,
+            lambda: self._get_uncached(request),
+            include_user=False,
+        )
+
+    def _get_uncached(self, request):
         banners = PlatformBannerRepository.get_active()
         return Response(PlatformBannerSerializer(banners, many=True, context={'request': request}).data)
 

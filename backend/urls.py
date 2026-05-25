@@ -5,6 +5,8 @@ from django.conf.urls.static import static
 from django.http import JsonResponse
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 
+from backend.media_views import MediaFileView
+
 
 def health_check(_request):
     return JsonResponse({'status': 'ok'})
@@ -26,6 +28,8 @@ urlpatterns = [
     path('api/notifications/', include('notifications.urls')),
     path('api/support/', include('support.urls')),
     path('api/invoices/', include('invoices.urls')),
+    path('api/files/', include('files.urls')),
+    path('api/media/<path:path>/', MediaFileView.as_view(), name='media-file'),
     path('api/admin/', include('backend.admin_urls')),
     path('django-rq/', include('django_rq.urls')),
 
@@ -35,5 +39,5 @@ urlpatterns = [
     path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
 ]
 
-if settings.DEBUG:
+if settings.DEBUG and not settings.USE_S3:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -4,9 +4,21 @@ from accounts.models import User
 from vendors.models.vendor import Vendor
 
 VENDOR_TYPE_CHOICES = (
-    ('individual', 'Individual'),
-    ('company', 'Company'),
-    ('partnership', 'Partnership'),
+    ('wholesale_store', 'Wholesale Store'),
+    ('retail_store', 'Retail Store'),
+    ('kirana_store', 'Kirana Store'),
+    ('supermarket', 'Supermarket'),
+    ('hypermarket', 'Hypermarket'),
+    ('department_store', 'Department Store'),
+    ('specialty_store', 'Specialty Store'),
+    ('convenience_store', 'Convenience Store'),
+    ('discount_store', 'Discount Store'),
+    ('franchise_store', 'Franchise Store'),
+    ('chain_store', 'Chain Store'),
+    ('online_store', 'Online Store / E-commerce'),
+    ('street_vendor', 'Street Vendor / Hawker'),
+    ('mandi_market_yard', 'Mandi / Market Yard'),
+    ('b2b_store', 'B2B Store'),
 )
 
 KYC_STATUS_CHOICES = (
@@ -34,7 +46,7 @@ class VendorOnboarding(models.Model):
 
     # ── Basic / legal identity ────────────────────────────────────────────────
     legal_name            = models.CharField(max_length=255, blank=True)
-    vendor_type           = models.CharField(max_length=20, choices=VENDOR_TYPE_CHOICES, default='individual')
+    vendor_type           = models.CharField(max_length=32, choices=VENDOR_TYPE_CHOICES, default='retail_store')
     contact_person_name   = models.CharField(max_length=200, blank=True)
     contact_person_email  = models.EmailField(blank=True)
     contact_person_phone  = models.CharField(max_length=15, blank=True)

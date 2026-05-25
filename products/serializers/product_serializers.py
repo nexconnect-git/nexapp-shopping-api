@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.utils.text import slugify
 
+from helpers.media_helpers import safe_media_url
 from products.models import Product
 from products.serializers.catalog_serializers import CatalogProductSerializer
 from products.serializers.category_serializers import CategorySerializer
@@ -138,19 +139,13 @@ class ProductListSerializer(serializers.ModelSerializer):
         """Return the absolute URL of the primary image, or None."""
         primary = obj.images.filter(is_primary=True).first()
         if primary:
-            request = self.context.get("request")
-            if request:
-                return request.build_absolute_uri(primary.image.url)
-            return primary.image.url
+            return safe_media_url(primary.image, request=self.context.get("request"))
         if obj.catalog_product_id:
             catalog_primary = obj.catalog_product.images.filter(is_primary=True).first()
             if not catalog_primary:
                 catalog_primary = obj.catalog_product.images.first()
             if catalog_primary:
-                request = self.context.get("request")
-                if request:
-                    return request.build_absolute_uri(catalog_primary.image.url)
-                return catalog_primary.image.url
+                return safe_media_url(catalog_primary.image, request=self.context.get("request"))
         return None
 
     def get_image_count(self, obj) -> int:

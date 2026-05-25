@@ -1,6 +1,7 @@
 import uuid
 from django.db import models
 from accounts.models import User
+from helpers.upload_paths import UserDateUploadPath
 
 
 class OrderIssue(models.Model):
@@ -64,7 +65,7 @@ class OrderIssueAttachment(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     issue = models.ForeignKey(OrderIssue, on_delete=models.CASCADE, related_name='attachments')
     uploaded_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='issue_attachments')
-    file = models.FileField(upload_to='order_issue_attachments/')
+    file = models.FileField(upload_to=UserDateUploadPath('order_attachment'))
     content_type = models.CharField(max_length=100, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

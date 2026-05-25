@@ -1,15 +1,19 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 from accounts.data.user_repository import UserRepository
+from helpers.media_helpers import safe_media_url
 from helpers.phone_helpers import normalize_phone
+from helpers.serializer_fields import SafeImageField
 from helpers.vendor_hours import get_vendor_availability, is_vendor_open_now
 from products.models import Product
 from products.serializers.category_serializers import CategorySerializer
-from vendors.models import Vendor
+from vendors.models import Vendor, VENDOR_TYPE_CHOICES
 
 User = get_user_model()
 
 class VendorSerializer(serializers.ModelSerializer):
+    logo = SafeImageField(required=False, allow_null=True)
+    banner = SafeImageField(required=False, allow_null=True)
     user_info = serializers.SerializerMethodField()
     is_open_now = serializers.SerializerMethodField()
     availability_note = serializers.SerializerMethodField()
@@ -38,7 +42,8 @@ class VendorSerializer(serializers.ModelSerializer):
         ]
 
     def get_user_info(self, obj) -> dict:
-        avatar = obj.user.avatar.url if obj.user.avatar else None
+        request = self.context.get("request")
+        avatar = safe_media_url(obj.user.avatar, request=request)
         data = {
             "id": str(obj.user.id),
             "username": obj.user.username,
@@ -90,13 +95,11 @@ class VendorListProductSerializer(serializers.ModelSerializer):
             primary = obj.catalog_product.images.filter(is_primary=True).first() or obj.catalog_product.images.first()
         if not primary:
             return None
-        request = self.context.get("request")
-        if request:
-            return request.build_absolute_uri(primary.image.url)
-        return primary.image.url
+        return safe_media_url(primary.image, request=self.context.get("request"))
 
 
 class VendorListSerializer(serializers.ModelSerializer):
+    logo = SafeImageField(read_only=True)
     is_open_now = serializers.SerializerMethodField()
     availability_note = serializers.SerializerMethodField()
     products = serializers.SerializerMethodField()
@@ -157,6 +160,10 @@ class VendorRegistrationSerializer(serializers.Serializer):
     first_name = serializers.CharField(required=False, default="")
     last_name = serializers.CharField(required=False, default="")
     store_name = serializers.CharField(max_length=200)
+    vendor_type = serializers.ChoiceField(
+        choices=[choice[0] for choice in VENDOR_TYPE_CHOICES],
+        default="retail_store",
+    )
     description = serializers.CharField(required=False, default="")
     phone = serializers.CharField(max_length=30)
     vendor_email = serializers.EmailField()
@@ -166,6 +173,8 @@ class VendorRegistrationSerializer(serializers.Serializer):
     postal_code = serializers.CharField(max_length=10)
     latitude = serializers.DecimalField(max_digits=11, decimal_places=8)
     longitude = serializers.DecimalField(max_digits=11, decimal_places=8)
+    logo = serializers.ImageField(required=False, allow_null=True)
+    banner = serializers.ImageField(required=False, allow_null=True)
 
     def validate_username(self, value: str) -> str:
         value = value.strip()
@@ -201,6 +210,7 @@ class VendorRegistrationSerializer(serializers.Serializer):
         return Vendor.objects.create(
             user=user,
             store_name=validated_data["store_name"],
+            vendor_type=validated_data.get("vendor_type", "retail_store"),
             description=validated_data.get("description", ""),
             phone=validated_data["phone"],
             email=validated_data["vendor_email"],
@@ -210,4 +220,6 @@ class VendorRegistrationSerializer(serializers.Serializer):
             postal_code=validated_data["postal_code"],
             latitude=validated_data["latitude"],
             longitude=validated_data["longitude"],
+            logo=validated_data.get("logo"),
+            banner=validated_data.get("banner"),
         )
