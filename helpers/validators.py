@@ -68,10 +68,26 @@ def validate_image_upload(upload, *, max_size_mb=5, label="image"):
 
 
 def validate_document_upload(upload, *, max_size_mb=10, label="document"):
-    return validate_uploaded_file(
+    validate_uploaded_file(
         upload,
         allowed_extensions=DOCUMENT_EXTENSIONS,
         allowed_content_types=DOCUMENT_CONTENT_TYPES,
         max_size_mb=max_size_mb,
         label=label,
     )
+
+    suffix = Path(getattr(upload, "name", "")).suffix.lower()
+    content_type = (getattr(upload, "content_type", "") or "").lower()
+    if suffix in IMAGE_EXTENSIONS or content_type in IMAGE_CONTENT_TYPES:
+        return validate_image_upload(upload, max_size_mb=max_size_mb, label=label)
+
+    current_position = upload.tell() if hasattr(upload, "tell") else None
+    try:
+        header = upload.read(5)
+        if header != b"%PDF-":
+            raise ValueError(f"{label.capitalize()} must be a valid PDF or image.")
+    finally:
+        if current_position is not None and hasattr(upload, "seek"):
+            upload.seek(current_position)
+
+    return upload

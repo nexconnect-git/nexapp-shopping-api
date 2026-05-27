@@ -17,7 +17,7 @@ from orders.actions.checkout import available_slots_for_cart, calculate_checkout
 from orders.actions.ordering import CreateOrdersFromCartAction, CancelOrderAction
 from orders.data.cart_repo import CartRepository
 from orders.data.order_repo import OrderRepository
-from orders.models import Cart, Order, OrderRating, PlatformSetting
+from orders.models import Cart, Order, OrderRating, PaymentSession, PlatformSetting
 from orders.serializers import (
     CreateOrderSerializer, OrderSerializer, OrderTrackingSerializer, OrderRatingSerializer,
 )
@@ -68,6 +68,26 @@ class CreateOrderView(APIView):
 
         try:
             with transaction.atomic():
+                payment_session = None
+                if has_razorpay_proof:
+                    try:
+                        payment_session = PaymentSession.objects.select_for_update().get(
+                            gateway_order_id=rz_order_id,
+                            customer=request.user,
+                        )
+                    except PaymentSession.DoesNotExist:
+                        return Response(
+                            {"error": "Payment session not found. Please restart checkout."},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+                    if payment_session.status == PaymentSession.STATUS_PAID and payment_session.orders.exists():
+                        existing_orders = payment_session.orders.select_related(
+                            "vendor",
+                            "delivery_address",
+                            "delivery_partner",
+                        ).prefetch_related("items", "tracking").all()
+                        return Response(OrderSerializer(existing_orders, many=True).data)
+
                 action = CreateOrdersFromCartAction()
                 created_orders = action.execute(
                     user=request.user,
@@ -81,9 +101,21 @@ class CreateOrderView(APIView):
                     confirm_far_delivery=vd.get("confirm_far_delivery", False),
                     cod_upi_confirmed=vd.get("cod_upi_confirmed", False),
                     client_price_breakup=vd.get("client_price_breakup", {}),
+                    client_idempotency_key=(
+                        vd.get("client_idempotency_key", "").strip()
+                        or request.headers.get("Idempotency-Key", "").strip()
+                    ),
                 )
 
                 if has_razorpay_proof:
+                    created_total = sum((order.total for order in created_orders), Decimal("0")).quantize(Decimal("0.01"))
+                    if created_total != payment_session.amount:
+                        payment_session.status = PaymentSession.STATUS_FAILED
+                        payment_session.mismatch_reason = (
+                            f"Payment amount {payment_session.amount} did not match order total {created_total}."
+                        )
+                        payment_session.save(update_fields=["status", "mismatch_reason", "updated_at"])
+                        raise ValueError("Payment amount mismatch. Please restart checkout.")
                     Order.objects.filter(pk__in=[o.pk for o in created_orders]).update(
                         razorpay_order_id=rz_order_id,
                         razorpay_payment_id=rz_payment_id,
@@ -93,6 +125,10 @@ class CreateOrderView(APIView):
                         order.razorpay_order_id = rz_order_id
                         order.razorpay_payment_id = rz_payment_id
                         order.is_payment_verified = True
+                    payment_session.gateway_payment_id = rz_payment_id
+                    payment_session.status = PaymentSession.STATUS_PAID
+                    payment_session.save(update_fields=["gateway_payment_id", "status", "updated_at"])
+                    payment_session.orders.set(created_orders)
         except FarDeliveryConfirmationRequired as exc:
             return Response(
                 {
@@ -113,6 +149,14 @@ class CreateOrderView(APIView):
             )
         except ValueError as exc:
             payload = exc.args[0] if exc.args else str(exc)
+            if has_razorpay_proof and str(payload).startswith("Payment amount mismatch"):
+                PaymentSession.objects.filter(
+                    gateway_order_id=rz_order_id,
+                    customer=request.user,
+                ).update(
+                    status=PaymentSession.STATUS_FAILED,
+                    mismatch_reason=str(payload),
+                )
             if isinstance(payload, dict):
                 return Response(payload, status=status.HTTP_400_BAD_REQUEST)
             return Response({"error": str(payload)}, status=status.HTTP_400_BAD_REQUEST)
@@ -184,7 +228,16 @@ class OrderPaymentQRView(APIView):
         
         from orders.models.setting import PlatformSetting
         setting = PlatformSetting.get_setting()
-        upi_string = f"upi://pay?pa={setting.upi_id}&pn=NexConnect&am={amount}&cu=INR&tn=Order%20{order.order_number}"
+        manual_qr = (setting.cod_payment_qr or "").strip()
+        upi_string = f"upi://pay?pa={setting.upi_id}&pn=Nextou&am={amount}&cu=INR&tn=Order%20{order.order_number}"
+        if manual_qr:
+            return Response({
+                "order_number": order.order_number,
+                "amount": amount,
+                "qr_base64": manual_qr,
+                "upi_string": upi_string,
+                "source": "admin",
+            })
 
         qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M)
         qr.add_data(upi_string)
@@ -200,6 +253,7 @@ class OrderPaymentQRView(APIView):
             "amount": amount,
             "qr_base64": f"data:image/png;base64,{qr_base64_string}",
             "upi_string": upi_string,
+            "source": "generated",
         })
 
 

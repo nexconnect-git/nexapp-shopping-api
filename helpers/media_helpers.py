@@ -34,8 +34,9 @@ def safe_media_url(file_field, request=None, default=None):
     if not file_field:
         return default
 
-    if getattr(settings, 'USE_S3', False):
-        return proxied_media_url(file_field, request=request) or default
+    proxied = proxied_media_url(file_field, request=request)
+    if proxied:
+        return proxied
 
     try:
         url = file_field.url

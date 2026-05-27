@@ -105,6 +105,10 @@ class Vendor(models.Model):
 
     class Meta:
         app_label = 'vendors'
+        indexes = [
+            models.Index(fields=['status', 'is_accepting_orders', 'city', 'state'], name='vendor_public_area_idx'),
+            models.Index(fields=['status', 'is_open', 'is_accepting_orders'], name='vendor_open_status_idx'),
+        ]
 
     def __str__(self):
         return self.store_name

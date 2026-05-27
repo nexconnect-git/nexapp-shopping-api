@@ -2,11 +2,12 @@ from decimal import Decimal
 
 from django.utils import timezone
 from rest_framework import generics, status, viewsets
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import Address
+from accounts.permissions import HasAdminPermission
 from helpers.cache_helpers import cached_api_response
 from helpers.delivery_quotes import quote_vendor_delivery
 from orders.data.coupon_repo import CouponRepository
@@ -114,7 +115,7 @@ class ValidateCouponView(APIView):
 
 
 class CustomerCouponListView(generics.ListAPIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     serializer_class = CouponSerializer
 
     def list(self, request, *args, **kwargs):
@@ -131,12 +132,11 @@ class CustomerCouponListView(generics.ListAPIView):
 
 
 class AdminCouponViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasAdminPermission]
+    required_admin_permission = "orders.manage"
     serializer_class = CouponSerializer
 
     def get_queryset(self):
-        if self.request.user.role != "admin":
-            return Coupon.objects.none()
         return CouponRepository.get_all_admin()
 
     def perform_create(self, serializer):

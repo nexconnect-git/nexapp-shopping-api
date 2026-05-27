@@ -9,6 +9,13 @@ class UploadedFileRepository(BaseRepository):
     def list_all(self):
         return self.all().select_related('uploaded_by').order_by('-created_at')
 
+    def list_for_user(self, user):
+        return (
+            self.model.objects.filter(uploaded_by=user)
+            .select_related('uploaded_by')
+            .order_by('-created_at')
+        )
+
     def get_by_client_upload_id(self, client_upload_id):
         if not client_upload_id:
             return None

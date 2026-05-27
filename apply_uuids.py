@@ -1,7 +1,7 @@
 import os
 import re
 
-base_path = r'd:\Projects\NexConnect\shopping-app\backend'
+base_path = os.path.dirname(os.path.abspath(__file__))
 apps = ['accounts', 'vendors', 'products', 'delivery', 'orders', 'notifications']
 
 # Inject UUIDs into Models

@@ -3,7 +3,6 @@ from rest_framework.routers import DefaultRouter
 from orders import views
 
 router = DefaultRouter()
-router.register(r'admin-coupons', views.AdminCouponViewSet, basename='admin-coupon')
 
 urlpatterns = [
     path('banners/', views.BannerListView.as_view(), name='banner-list'),

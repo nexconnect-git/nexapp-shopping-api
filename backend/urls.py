@@ -2,18 +2,16 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
-from django.http import JsonResponse
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 
+from backend.health_views import health_live, health_ready
 from backend.media_views import MediaFileView
 
 
-def health_check(_request):
-    return JsonResponse({'status': 'ok'})
-
-
 urlpatterns = [
-    path('health/', health_check),
+    path('health/', health_live),
+    path('health/live/', health_live),
+    path('health/ready/', health_ready),
     path('admin/', admin.site.urls),
 
     # v1 API
@@ -31,13 +29,15 @@ urlpatterns = [
     path('api/files/', include('files.urls')),
     path('api/media/<path:path>/', MediaFileView.as_view(), name='media-file'),
     path('api/admin/', include('backend.admin_urls')),
-    path('django-rq/', include('django_rq.urls')),
 
     # OpenAPI / Swagger
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
     path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
 ]
+
+if settings.DEBUG or settings.ENABLE_DJANGO_RQ_DASHBOARD:
+    urlpatterns.append(path('django-rq/', include('django_rq.urls')))
 
 if settings.DEBUG and not settings.USE_S3:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

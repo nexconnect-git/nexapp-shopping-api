@@ -24,6 +24,10 @@ from helpers.phone_helpers import normalize_phone
 
 logger = logging.getLogger(__name__)
 OTP_RESEND_COOLDOWN_SECONDS = 60
+OTP_REQUEST_WINDOW_MINUTES = 15
+OTP_MAX_REQUESTS_PER_PHONE = 5
+OTP_MAX_REQUESTS_PER_EMAIL = 5
+OTP_GENERIC_DETAIL = 'If this account can use OTP login, an OTP has been sent.'
 
 
 class RegisterAction:
@@ -119,6 +123,10 @@ def _build_customer_username(phone: str) -> str:
     return f'cust_{suffix}_{uuid.uuid4().hex[:6]}'
 
 
+def _generic_otp_response(phone: str) -> dict:
+    return {'detail': OTP_GENERIC_DETAIL, 'phone': phone}
+
+
 class RequestMobileOTPAction:
     def __init__(self, data: dict, purpose: str):
         self._data = data
@@ -138,14 +146,14 @@ class RequestMobileOTPAction:
             if customer is not None:
                 registered_email = (customer.email or '').strip().lower()
                 if not registered_email:
-                    raise ValueError('This account does not have an email address for OTP login. Please contact support.')
+                    return _generic_otp_response(phone)
                 if registered_email != fallback_email:
-                    raise ValueError('Enter the email address linked to this mobile number.')
+                    return _generic_otp_response(phone)
             else:
                 if UserRepository.phone_exists(phone):
-                    raise ValueError('This mobile number is already registered for another account type.')
+                    return _generic_otp_response(phone)
                 if UserRepository.email_exists(fallback_email):
-                    raise ValueError('An account already exists for this email address. Please sign in with the registered mobile number.')
+                    return _generic_otp_response(phone)
 
         if self._purpose == MobileOTP.PURPOSE_REGISTER and UserRepository.phone_exists(phone):
             raise ValueError('An account already exists for this mobile number. Please sign in instead.')
@@ -153,6 +161,12 @@ class RequestMobileOTPAction:
             raise ValueError('An account already exists for this email address. Please sign in instead.')
         if self._purpose == MobileOTP.PURPOSE_REGISTER:
             email_for_otp = fallback_email
+
+        recent_cutoff = timezone.now() - timezone.timedelta(minutes=OTP_REQUEST_WINDOW_MINUTES)
+        recent_phone_count = MobileOTP.objects.filter(phone=phone, created_at__gte=recent_cutoff).count()
+        recent_email_count = MobileOTP.objects.filter(email=email_for_otp, created_at__gte=recent_cutoff).count()
+        if recent_phone_count >= OTP_MAX_REQUESTS_PER_PHONE or recent_email_count >= OTP_MAX_REQUESTS_PER_EMAIL:
+            raise ValueError('Too many OTP requests. Please try again later.')
 
         latest = (
             MobileOTP.objects
@@ -163,13 +177,16 @@ class RequestMobileOTPAction:
         if latest and latest.created_at > timezone.now() - timezone.timedelta(seconds=OTP_RESEND_COOLDOWN_SECONDS):
             raise ValueError('Please wait before requesting another OTP.')
 
-        _otp, code = MobileOTP.create_code(phone=phone, purpose=self._purpose, email=email_for_otp)
+        _otp, code = MobileOTP.create_code(
+            phone=phone,
+            purpose=self._purpose,
+            ttl_minutes=int(getattr(settings, 'OTP_EXPIRY_MINUTES', 10) or 10),
+            email=email_for_otp,
+        )
         email_queued = self._queue_email_fallback(code, email_for_otp)
-        payload = {'detail': 'OTP sent successfully.', 'phone': phone}
+        payload = _generic_otp_response(phone)
         if email_queued:
             payload['email_fallback_queued'] = True
-        if self._purpose == MobileOTP.PURPOSE_LOGIN:
-            payload['user_exists'] = customer is not None
         if self._purpose == MobileOTP.PURPOSE_REGISTER:
             payload['user_exists'] = False
         if settings.DEBUG and getattr(settings, 'CUSTOMER_AUTH_EXPOSE_DEV_OTP', False):

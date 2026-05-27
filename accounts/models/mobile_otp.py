@@ -1,4 +1,4 @@
-import random
+import secrets
 from datetime import timedelta
 
 from django.contrib.auth.hashers import check_password, make_password
@@ -29,7 +29,7 @@ class MobileOTP(models.Model):
 
     @classmethod
     def create_code(cls, phone: str, purpose: str, ttl_minutes: int = 10, email: str = '') -> tuple['MobileOTP', str]:
-        code = f'{random.randint(0, 999999):06d}'
+        code = f'{secrets.randbelow(1_000_000):06d}'
         otp = cls.objects.create(
             phone=phone,
             email=email.strip().lower(),

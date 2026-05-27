@@ -25,7 +25,7 @@ class RazorpayService:
         Args:
             amount_inr: Order total in INR (will be converted to paise).
             currency: ISO 4217 currency code, default 'INR'.
-            receipt: Optional receipt string (e.g. NexConnect order number).
+            receipt: Optional receipt string (e.g. Nextou order number).
 
         Returns:
             Razorpay order dict containing at least ``id``, ``amount``, ``currency``.

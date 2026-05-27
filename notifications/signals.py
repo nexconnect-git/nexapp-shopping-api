@@ -44,6 +44,13 @@ def _send_customer_order_email(order, template_type: str, message: str = "") -> 
         logger.exception("Customer order email %s failed for order %s.", template_type, order.pk)
 
 
+def _send_vendor_approved_email(vendor) -> None:
+    try:
+        EmailService.send_vendor_approved_email(vendor)
+    except Exception:
+        logger.exception("Vendor approved email failed for vendor %s.", vendor.pk)
+
+
 def _create_and_push(user, title: str, message: str, notification_type: str, data: dict):
     """Create an in-app notification and fire an FCM push for the same user."""
     Notification.objects.create(
@@ -59,8 +66,33 @@ def _create_and_push(user, title: str, message: str, notification_type: str, dat
         logger.warning("FCM push failed for user %s: %s", user.pk, exc)
 
 
+@receiver(vendor_approved)
+def notify_vendor_approved(sender, vendor, **kwargs):
+    _send_vendor_approved_email(vendor)
+
+
 @receiver(order_placed)
 def notify_order_placed(sender, order, **kwargs):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    release_at = timezone.now() + timedelta(
+        minutes=int(getattr(order.vendor, "scheduled_buffer_min", 0) or 30)
+    )
+    if order.scheduled_for and order.scheduled_for > release_at:
+        _create_and_push(
+            user=order.customer,
+            title="Order Scheduled Successfully",
+            message=(
+                f"Your order #{order.order_number} from {order.vendor.store_name} has been scheduled. "
+                "The store will receive it closer to your selected time."
+            ),
+            notification_type="order",
+            data={"order_id": str(order.id), "order_number": order.order_number},
+        )
+        _send_customer_order_email(order, "order_placed")
+        return
     _create_and_push(
         user=order.vendor.user,
         title="New Order Received",

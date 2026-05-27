@@ -21,6 +21,6 @@ DATABASES = {
 }
 
 CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
-ROOT_URLCONF = "backend.test_urls"
+ROOT_URLCONF = "backend.urls"
 SILENCED_SYSTEM_CHECKS = ["urls.W005", "urls.E007", "urls.W001"]
 ALLOWED_HOSTS = [*ALLOWED_HOSTS, "testserver"]

@@ -1,4 +1,4 @@
-import random
+import secrets
 from typing import Any
 from django.db import transaction
 from django.utils import timezone
@@ -10,6 +10,7 @@ from delivery.tasks import search_and_notify_partners, _expand_and_retry
 from notifications.fcm import send_push
 from notifications.models import Notification
 from helpers.geo_helpers import calculate_eta_minutes
+from delivery.models import DeliveryAssignment
 
 
 class AcceptAssignmentAction:
@@ -18,22 +19,28 @@ class AcceptAssignmentAction:
     def execute(assignment_id: str, user: Any) -> Order:
         partner = user.delivery_profile
         try:
-            assignment = DeliveryAssignmentRepository.get_by_id(
-                pk=assignment_id,
-                select_related=["order"]
+            assignment = (
+                DeliveryAssignment.objects.select_for_update()
+                .select_related("order")
+                .get(pk=assignment_id)
             )
             if partner not in assignment.notified_partners.all() or assignment.status != "notified":
                 raise ValueError("Request not found or no longer available.")
+            order = (
+                Order.objects.select_for_update()
+                .select_related("customer", "vendor__user")
+                .get(pk=assignment.order_id)
+            )
         except Exception:
             raise ValueError("Request not found or no longer available.")
 
-        if assignment.order.delivery_partner is not None:
+        if assignment.accepted_partner_id or order.delivery_partner_id is not None:
             raise ValueError("This order was already accepted by another partner.")
 
-        order = assignment.order
+        assignment.order = order
         old_status = order.status
         order.delivery_partner = user
-        order.pickup_otp = str(random.randint(100000, 999999))
+        order.pickup_otp = f"{secrets.randbelow(900000) + 100000}"
 
         # Calculate ETA if all coordinates are available
         save_fields = ["delivery_partner", "pickup_otp", "updated_at"]

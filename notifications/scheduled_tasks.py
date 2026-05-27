@@ -3,7 +3,7 @@ Scheduled background tasks for admin-triggered jobs.
 Each function is decorated with @job('default') to run via RQ.
 """
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from django_rq import job
 
 logger = logging.getLogger(__name__)
@@ -216,3 +216,116 @@ def send_bulk_notification(title: str, message: str, target: str = 'all'):
     except Exception as e:
         logger.error(f"[send_bulk_notification] Error: {e}")
         raise
+
+
+@job('default')
+def enforce_vendor_closing_times(warning_minutes: int = 15):
+    """
+    Notify vendors shortly before closing and close stores that remain open
+    after their configured closing time.
+    """
+    from django.utils import timezone
+    from notifications.models import Notification
+    from vendors.models import Vendor
+
+    now = timezone.localtime(timezone.now())
+    today = now.date()
+    notified = 0
+    closed = 0
+
+    vendors = Vendor.objects.filter(status='approved', is_open=True).select_related('user')
+    for vendor in vendors:
+        if not vendor.closing_time:
+            continue
+        close_at = timezone.make_aware(
+            datetime.combine(today, vendor.closing_time),
+            timezone.get_current_timezone(),
+        )
+        minutes_to_close = (close_at - now).total_seconds() / 60
+
+        if 0 < minutes_to_close <= warning_minutes:
+            exists = Notification.objects.filter(
+                user=vendor.user,
+                notification_type='system',
+                created_at__date=today,
+                data__action='store_closing_warning',
+                data__vendor_id=str(vendor.id),
+            ).exists()
+            if not exists:
+                Notification.objects.create(
+                    user=vendor.user,
+                    title='Store closing soon',
+                    message=(
+                        f'{vendor.store_name} closes at {vendor.closing_time.strftime("%I:%M %p")}. '
+                        'Extend the closing time from store settings if you want to keep accepting orders.'
+                    ),
+                    notification_type='system',
+                    data={
+                        'action': 'store_closing_warning',
+                        'vendor_id': str(vendor.id),
+                        'closing_time': vendor.closing_time.isoformat(),
+                    },
+                )
+                notified += 1
+
+        if now >= close_at:
+            vendor.is_open = False
+            vendor.is_accepting_orders = False
+            vendor.save(update_fields=['is_open', 'is_accepting_orders', 'updated_at'])
+            Notification.objects.create(
+                user=vendor.user,
+                title='Store closed automatically',
+                message=(
+                    f'{vendor.store_name} was closed at the configured closing time. '
+                    'Open it again from the vendor dashboard when ready.'
+                ),
+                notification_type='system',
+                data={'action': 'store_auto_closed', 'vendor_id': str(vendor.id)},
+            )
+            closed += 1
+
+    logger.info('[enforce_vendor_closing_times] notified=%s closed=%s', notified, closed)
+    return {'notified': notified, 'closed': closed}
+
+
+@job('default')
+def release_due_scheduled_orders():
+    """Notify vendors only when scheduled orders are close enough to prepare."""
+    from django.utils import timezone
+    from notifications.models import Notification
+    from orders.models import Order
+
+    now = timezone.now()
+    released = 0
+    orders = Order.objects.filter(
+        scheduled_for__isnull=False,
+        status__in=['placed', 'confirmed'],
+    ).select_related('vendor__user')
+    for order in orders:
+        release_at = order.scheduled_for - timedelta(
+            minutes=int(getattr(order.vendor, 'scheduled_buffer_min', 0) or 30)
+        )
+        if release_at > now:
+            continue
+        exists = Notification.objects.filter(
+            user=order.vendor.user,
+            notification_type='order',
+            data__action='scheduled_order_released',
+            data__order_id=str(order.id),
+        ).exists()
+        if exists:
+            continue
+        Notification.objects.create(
+            user=order.vendor.user,
+            title='Scheduled order ready to prepare',
+            message=f'Order #{order.order_number} is now ready for preparation.',
+            notification_type='order',
+            data={
+                'action': 'scheduled_order_released',
+                'order_id': str(order.id),
+                'order_number': order.order_number,
+            },
+        )
+        released += 1
+    logger.info('[release_due_scheduled_orders] released=%s', released)
+    return {'released': released}

@@ -1,5 +1,5 @@
 """
-Global helper utilities for the NexConnect backend.
+Global helper utilities for the Nextou backend.
 
 This package exposes reusable, app-agnostic functions and classes that are
 shared across multiple Django apps, enforcing the DRY principle at the

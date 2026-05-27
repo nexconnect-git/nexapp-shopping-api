@@ -71,6 +71,22 @@ TASK_REGISTRY = {
         'icon': 'campaign',
         'category': 'notifications',
     },
+    'enforce_vendor_closing_times': {
+        'label': 'Enforce Vendor Closing Times',
+        'description': 'Warn vendors before closing and auto-close stores that pass their configured closing time.',
+        'func': 'notifications.scheduled_tasks.enforce_vendor_closing_times',
+        'params': ['warning_minutes'],
+        'icon': 'schedule',
+        'category': 'operations',
+    },
+    'release_due_scheduled_orders': {
+        'label': 'Release Due Scheduled Orders',
+        'description': 'Notify vendors when scheduled orders enter their preparation window.',
+        'func': 'notifications.scheduled_tasks.release_due_scheduled_orders',
+        'params': [],
+        'icon': 'event_available',
+        'category': 'operations',
+    },
 }
 
 

@@ -8,6 +8,7 @@ from datetime import timedelta
 from django.db.models import Sum, Count, Q
 
 from accounts.permissions import IsAdminRole
+from vendors.actions import SendVendorWelcomeEmailAction, UpdateVendorStatusAction
 from vendors.serializers.admin import AdminVendorSerializer, VendorFullOnboardSerializer
 from vendors.serializers.public import VendorRegistrationSerializer
 from vendors.data import VendorRepository
@@ -25,6 +26,7 @@ class AdminVendorOnboardView(APIView):
         response_data = AdminVendorSerializer(vendor).data
         if hasattr(vendor, 'auto_generated_password'):
             response_data['temporary_password'] = vendor.auto_generated_password
+        SendVendorWelcomeEmailAction().execute(vendor)
             
         return Response(response_data, status=status.HTTP_201_CREATED)
 
@@ -46,6 +48,7 @@ class AdminVendorListView(APIView):
         serializer = VendorRegistrationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         vendor = serializer.save()
+        SendVendorWelcomeEmailAction().execute(vendor)
         return Response(AdminVendorSerializer(vendor).data, status=status.HTTP_201_CREATED)
 
 class AdminVendorDetailView(APIView):
@@ -81,11 +84,10 @@ class AdminVendorStatusView(APIView):
                 {"error": f"Invalid status. Must be one of: {', '.join(self.ALLOWED_STATUSES)}"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        vendor = VendorRepository().get_by_id(pk)
-        if not vendor:
-            return Response({"error": "Vendor not found."}, status=status.HTTP_404_NOT_FOUND)
-        vendor.status = new_status
-        vendor.save(update_fields=['status'])
+        try:
+            vendor = UpdateVendorStatusAction().execute(pk, new_status)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_404_NOT_FOUND)
         return Response(AdminVendorSerializer(vendor).data)
 
 

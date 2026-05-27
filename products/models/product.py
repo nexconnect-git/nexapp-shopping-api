@@ -116,6 +116,14 @@ class Product(models.Model):
     class Meta:
         app_label = 'products'
         ordering = ['-created_at']
+        indexes = [
+            models.Index(
+                fields=['vendor', 'status', 'approval_status', 'is_available', 'stock'],
+                name='prod_vendor_visible_idx',
+            ),
+            models.Index(fields=['category', 'status', 'approval_status'], name='prod_category_visible_idx'),
+            models.Index(fields=['status', 'approval_status', 'is_available', 'stock'], name='prod_public_visible_idx'),
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=[

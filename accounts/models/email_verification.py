@@ -1,4 +1,4 @@
-import random
+import secrets
 from datetime import timedelta
 
 from django.db import models
@@ -43,5 +43,5 @@ class EmailVerification(models.Model):
     def create_for_user(cls, user) -> 'EmailVerification':
         """Invalidate all previous OTPs for the user and create a fresh one."""
         cls.objects.filter(user=user, is_used=False).update(is_used=True)
-        otp = f"{random.randint(0, 999999):06d}"
+        otp = f"{secrets.randbelow(1_000_000):06d}"
         return cls.objects.create(user=user, otp=otp)

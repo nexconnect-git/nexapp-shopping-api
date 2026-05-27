@@ -19,7 +19,7 @@ class AddReviewAction(BaseAction):
                 comment=comment
             )
             # Update product aggregates via signal or manually here
-            # In NexConnect, signals usually handle it. 
+            # In Nextou, signals usually handle it. 
         return review
 
 class UpdateReviewAction(BaseAction):

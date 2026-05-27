@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Cart, CartItem, Order, OrderItem, OrderTracking, PlatformBanner
+from .models import Cart, CartItem, CustomerContentBlock, Order, OrderItem, OrderTracking, PlatformBanner
 
 
 class OrderItemInline(admin.TabularInline):
@@ -42,3 +42,11 @@ class PlatformBannerAdmin(admin.ModelAdmin):
     list_editable = ('display_order', 'is_active')
     list_filter = ('is_active',)
     search_fields = ('title', 'subtitle')
+
+
+@admin.register(CustomerContentBlock)
+class CustomerContentBlockAdmin(admin.ModelAdmin):
+    list_display = ('title', 'placement', 'template', 'tone', 'display_order', 'is_active', 'updated_at')
+    list_editable = ('display_order', 'is_active')
+    list_filter = ('placement', 'template', 'tone', 'is_active')
+    search_fields = ('title', 'eyebrow', 'subtitle', 'cta_url')

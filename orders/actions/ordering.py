@@ -4,6 +4,7 @@ from decimal import Decimal
 from typing import List
 
 from django.db import transaction
+from django.db.models import F, Q
 from django.utils import timezone
 from rest_framework.renderers import JSONRenderer
 
@@ -27,6 +28,7 @@ from orders.actions.refund_actions import IssueRazorpayRefundAction
 from orders.models import Cart, Coupon, CouponUsage, IssueMessage, Order, OrderIssue, OrderItem, OrderTracking
 from orders.serializers import IssueMessageSerializer
 from products.actions.inventory import DecreaseStockAction
+from products.models import Product
 from vendors.realtime import broadcast_order_event
 
 from .base import BaseAction
@@ -34,9 +36,21 @@ from .base import BaseAction
 
 class CreateOrdersFromCartAction(BaseAction):
     @transaction.atomic
-    def execute(self, user, delivery_address_id, payment_method="cod", notes="", coupon_code="", wallet_amount: Decimal = Decimal("0"), loyalty_points: int = 0, scheduled_for=None, confirm_far_delivery: bool = False, cod_upi_confirmed: bool = False, client_price_breakup: dict | None = None) -> List[Order]:
+    def execute(self, user, delivery_address_id, payment_method="cod", notes="", coupon_code="", wallet_amount: Decimal = Decimal("0"), loyalty_points: int = 0, scheduled_for=None, confirm_far_delivery: bool = False, cod_upi_confirmed: bool = False, client_price_breakup: dict | None = None, client_idempotency_key: str = "") -> List[Order]:
         if not user.is_active:
             raise ValueError("Your account is not active. Please contact support.")
+        client_idempotency_key = (client_idempotency_key or "").strip()[:120]
+        if client_idempotency_key:
+            existing_orders = list(
+                Order.objects.select_for_update()
+                .filter(customer=user, client_idempotency_key=client_idempotency_key)
+                .select_related("vendor", "delivery_address", "delivery_partner")
+                .prefetch_related("items", "tracking")
+                .order_by("placed_at")
+            )
+            if existing_orders:
+                return existing_orders
+
         try:
             delivery_address = Address.objects.get(pk=delivery_address_id, user=user)
         except Address.DoesNotExist:
@@ -45,19 +59,31 @@ class CreateOrdersFromCartAction(BaseAction):
         validate_cod_confirmation(payment_method, cod_upi_confirmed)
 
         try:
-            cart = Cart.objects.prefetch_related("items__product__vendor").get(user=user)
+            cart = Cart.objects.select_for_update().get(user=user)
         except Cart.DoesNotExist:
             raise ValueError("Cart is empty.")
 
-        cart_items = cart.items.select_related("product__vendor").all()
-        if not cart_items.exists():
+        cart_items = list(cart.items.select_related("product__vendor").all())
+        if not cart_items:
             raise ValueError("Cart is empty.")
+
+        locked_products = {
+            product.id: product
+            for product in Product.objects.select_for_update()
+            .select_related("vendor", "category")
+            .filter(id__in=[item.product_id for item in cart_items])
+        }
+        for item in cart_items:
+            product = locked_products.get(item.product_id)
+            if not product:
+                raise ValueError("One or more cart products are no longer available.")
+            item.product = product
 
         coupon = None
         if coupon_code:
             now = timezone.now()
             try:
-                coupon = Coupon.objects.get(code=coupon_code, is_active=True)
+                coupon = Coupon.objects.select_for_update().get(code=coupon_code, is_active=True)
                 if coupon.valid_until and coupon.valid_until < now:
                     raise ValueError("Coupon has expired.")
                 if coupon.valid_from > now:
@@ -246,6 +272,7 @@ class CreateOrdersFromCartAction(BaseAction):
                 estimated_delivery_time=quote.estimated_delivery_minutes,
                 delivery_latitude=delivery_address.latitude,
                 delivery_longitude=delivery_address.longitude,
+                client_idempotency_key=client_idempotency_key,
                 price_breakup=public_price_breakup(price_preview),
                 payment_metadata={
                     "cod_upi_confirmed": bool(cod_upi_confirmed),
@@ -293,7 +320,13 @@ class CreateOrdersFromCartAction(BaseAction):
                     order=order,
                     discount_applied=order.coupon_discount,
                 )
-            Coupon.objects.filter(pk=coupon.pk).update(used_count=coupon.used_count + 1)
+            updated = Coupon.objects.filter(
+                pk=coupon.pk,
+            ).filter(
+                Q(usage_limit__isnull=True) | Q(used_count__lt=F("usage_limit"))
+            ).update(used_count=F("used_count") + 1)
+            if not updated:
+                raise ValueError("Coupon usage limit reached.")
 
         cart.items.all().delete()
 
@@ -388,7 +421,7 @@ class CancelOrderAction(BaseAction):
 
         for item in order.items.select_related("product").all():
             if item.product:
-                ProductModel.objects.filter(pk=item.product.pk).update(stock=item.product.stock + item.quantity)
+                ProductModel.objects.filter(pk=item.product.pk).update(stock=F("stock") + item.quantity)
                 if item.product.status == "sold_out":
                     ProductModel.objects.filter(pk=item.product.pk).update(status="active")
 

@@ -2,6 +2,7 @@
 
 import json
 import logging
+from decimal import Decimal
 
 from django.conf import settings
 from django.views.decorators.csrf import csrf_exempt
@@ -16,7 +17,7 @@ from helpers.delivery_quotes import FarDeliveryConfirmationRequired
 from orders.actions.checkout import COD_UPI_CONFIRMATION_MESSAGE, calculate_checkout_preview
 from orders.actions.payment_actions import CreateRazorpayOrderAction, VerifyRazorpayPaymentAction
 from orders.data.order_repo import OrderRepository
-from orders.models import PlatformSetting
+from orders.models import PaymentSession, PlatformSetting
 from orders.serializers import OrderSerializer
 from orders.services.razorpay_service import RazorpayService
 
@@ -131,6 +132,21 @@ class InitiateCheckoutPaymentView(APIView):
             logger.error("Failed to create Razorpay order for checkout: %s", exc)
             return Response({'error': 'Could not initiate payment. Please try again.'}, status=status.HTTP_502_BAD_GATEWAY)
 
+        PaymentSession.objects.update_or_create(
+            gateway_order_id=rz_order['id'],
+            defaults={
+                'customer': request.user,
+                'amount': Decimal(str(final_total)).quantize(Decimal('0.01')),
+                'currency': rz_order.get('currency', 'INR'),
+                'status': PaymentSession.STATUS_CREATED,
+                'metadata': {
+                    'delivery_address_id': str(request.data.get('delivery_address_id', '')),
+                    'coupon_code': request.data.get('coupon_code', ''),
+                    'wallet_amount': str(request.data.get('wallet_amount', 0)),
+                },
+            },
+        )
+
         return Response({
             'razorpay_order_id': rz_order['id'],
             'amount': rz_order['amount'],
@@ -143,7 +159,7 @@ class InitiateCheckoutPaymentView(APIView):
 class CreateRazorpayOrderView(APIView):
     """POST /api/orders/<pk>/create-payment/
 
-    Creates a Razorpay order for the given NexConnect order.
+    Creates a Razorpay order for the given Nextou order.
     Returns the data needed to open the Razorpay checkout modal on the frontend.
     """
 
@@ -242,14 +258,31 @@ class RazorpayWebhookView(APIView):
             payment = payload['payload']['payment']['entity']
             rz_order_id = payment.get('order_id', '')
             rz_payment_id = payment.get('id', '')
+            event_id = payload.get('id', '')
 
             if not rz_order_id:
                 return
 
             from orders.models import Order
+            session = PaymentSession.objects.filter(gateway_order_id=rz_order_id).first()
+            if session and event_id and session.last_event_id == event_id:
+                return
+
             try:
                 order = Order.objects.get(razorpay_order_id=rz_order_id)
             except Order.DoesNotExist:
+                if session:
+                    session.gateway_payment_id = rz_payment_id
+                    session.status = PaymentSession.STATUS_PAID
+                    session.last_event_id = event_id
+                    session.mismatch_reason = "Payment captured before application order finalization."
+                    session.save(update_fields=[
+                        'gateway_payment_id',
+                        'status',
+                        'last_event_id',
+                        'mismatch_reason',
+                        'updated_at',
+                    ])
                 logger.warning("Webhook: no order found for razorpay_order_id=%s", rz_order_id)
                 return
 
@@ -257,6 +290,12 @@ class RazorpayWebhookView(APIView):
                 order.razorpay_payment_id = rz_payment_id
                 order.is_payment_verified = True
                 order.save(update_fields=['razorpay_payment_id', 'is_payment_verified', 'updated_at'])
+                if session:
+                    session.gateway_payment_id = rz_payment_id
+                    session.status = PaymentSession.STATUS_PAID
+                    session.last_event_id = event_id
+                    session.save(update_fields=['gateway_payment_id', 'status', 'last_event_id', 'updated_at'])
+                    session.orders.add(order)
                 logger.info("Webhook: payment verified for order %s", order.order_number)
         except (KeyError, TypeError) as exc:
             logger.error("Webhook payload parse error: %s", exc)

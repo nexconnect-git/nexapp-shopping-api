@@ -27,6 +27,7 @@ DJANGO_ENV = os.environ.get('DJANGO_ENV', 'local').strip().lower()
 
 DEBUG = env_bool('DEBUG', False)
 PUBLIC_BACKEND_URL = os.environ.get('PUBLIC_BACKEND_URL', '').rstrip('/')
+ENABLE_DJANGO_RQ_DASHBOARD = env_bool('ENABLE_DJANGO_RQ_DASHBOARD', False)
 
 SECRET_KEY = os.environ.get('SECRET_KEY')
 if not SECRET_KEY:
@@ -143,15 +144,8 @@ FILE_UPLOAD_ALLOWED_CONTENT_TYPES = [
         ','.join([
             'image/jpeg',
             'image/png',
-            'image/gif',
             'image/webp',
             'application/pdf',
-            'text/plain',
-            'text/csv',
-            'application/msword',
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            'application/vnd.ms-excel',
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ]),
     ).split(',')
     if content_type.strip()
@@ -223,6 +217,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # ---------------------------------------------------------------------------
 
 CORS_ALLOW_ALL_ORIGINS = os.environ.get('CORS_ALLOW_ALL_ORIGINS', 'False') == 'True'
+CORS_ALLOW_CREDENTIALS = env_bool('CORS_ALLOW_CREDENTIALS', True)
 _cors_origins = os.environ.get('CORS_ALLOWED_ORIGINS', '')
 if _cors_origins:
     CORS_ALLOWED_ORIGINS = _cors_origins.split(',')
@@ -284,8 +279,28 @@ EMAIL_HOST_PASSWORD = os.environ.get('SMTP_APP_PASSWORD') or os.environ.get('EMA
 _smtp_secure = (os.environ.get('SMTP_SECURE') or os.environ.get('EMAIL_USE_TLS', 'False')).strip().lower()
 EMAIL_USE_SSL = _smtp_secure in ('ssl', 'smtps') or (_smtp_secure in ('true', '1', 'yes') and EMAIL_PORT == 465)
 EMAIL_USE_TLS = not EMAIL_USE_SSL and _smtp_secure in ('true', '1', 'yes', 'tls', 'starttls')
-DEFAULT_FROM_EMAIL = os.environ.get('FROM_EMAIL') or os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@nex-connect.in')
-DEFAULT_FROM_NAME = os.environ.get('FROM_NAME', 'NexConnect')
+DEFAULT_FROM_EMAIL = (
+    os.environ.get('EMAIL_FROM_ADDRESS')
+    or os.environ.get('FROM_EMAIL')
+    or os.environ.get('DEFAULT_FROM_EMAIL', 'no-reply@nextou.in')
+)
+DEFAULT_FROM_NAME = os.environ.get('EMAIL_FROM_NAME') or os.environ.get('FROM_NAME', 'Nextou')
+BRAND_NAME = os.environ.get('BRAND_NAME', 'Nextou')
+BRAND_TAGLINE = os.environ.get('BRAND_TAGLINE', 'Fast. Fresh. Delivered. \u26a1')
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'https://nex-connect.in')
+CUSTOMER_APP_URL = os.environ.get('CUSTOMER_APP_URL', FRONTEND_URL)
+VENDOR_APP_URL = os.environ.get('VENDOR_APP_URL', FRONTEND_URL)
+ADMIN_PANEL_URL = os.environ.get('ADMIN_PANEL_URL', FRONTEND_URL)
+SUPPORT_EMAIL = os.environ.get('SUPPORT_EMAIL', 'support@nextou.in')
+SUPPORT_PHONE = os.environ.get('SUPPORT_PHONE', '+91 80 1234 5678')
+SUPPORT_HOURS = os.environ.get('SUPPORT_HOURS', 'Mon - Sun: 7AM - 11PM')
+HELP_URL = os.environ.get('HELP_URL', f"{CUSTOMER_APP_URL.rstrip('/')}/help" if CUSTOMER_APP_URL else '')
+FAQ_URL = os.environ.get('FAQ_URL', f"{CUSTOMER_APP_URL.rstrip('/')}/help/faq" if CUSTOMER_APP_URL else '')
+SUPPORT_URL = os.environ.get('SUPPORT_URL', f"{CUSTOMER_APP_URL.rstrip('/')}/help" if CUSTOMER_APP_URL else '')
+ADMIN_VENDOR_REVIEW_EMAIL = os.environ.get('ADMIN_VENDOR_REVIEW_EMAIL', '')
+WELCOME_COUPON_CODE = os.environ.get('WELCOME_COUPON_CODE', 'NEXTOU25')
+OTP_EXPIRY_MINUTES = int(os.environ.get('OTP_EXPIRY_MINUTES', '10'))
+EMAIL_VERIFICATION_EXPIRY_MINUTES = int(os.environ.get('EMAIL_VERIFICATION_EXPIRY_MINUTES', '15'))
 CUSTOMER_AUTH_EXPOSE_DEV_OTP = os.environ.get('CUSTOMER_AUTH_EXPOSE_DEV_OTP', 'False') in ('True', 'true', '1', 'yes')
 
 # ---------------------------------------------------------------------------
@@ -355,7 +370,7 @@ CACHES = {
 # ---------------------------------------------------------------------------
 
 SPECTACULAR_SETTINGS = {
-    'TITLE': 'NexConnect API',
+    'TITLE': 'Nextou API',
     'DESCRIPTION': 'Multi-vendor delivery platform API',
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,

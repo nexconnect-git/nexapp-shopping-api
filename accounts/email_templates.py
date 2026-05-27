@@ -19,9 +19,9 @@ def _line_items(items) -> str:
 
 
 def render_customer_email(template_type: str, payload: dict) -> tuple[str, str]:
-    brand = payload.get("brand_name") or "NexConnect"
+    brand = payload.get("brand_name") or "Nextou"
     customer_name = payload.get("customer_name") or "Customer"
-    support = payload.get("support_contact") or "support@nex-connect.in"
+    support = payload.get("support_contact") or "support@nextou.in"
 
     if template_type == "otp_login":
         return (

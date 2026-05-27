@@ -145,3 +145,4 @@ class DeliveryPartnerRegistrationSerializer(serializers.Serializer):
 class UpdateLocationSerializer(serializers.Serializer):
     latitude = serializers.FloatField(min_value=-90, max_value=90)
     longitude = serializers.FloatField(min_value=-180, max_value=180)
+    order_id = serializers.UUIDField(required=False)

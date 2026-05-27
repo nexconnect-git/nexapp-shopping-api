@@ -1,12 +1,12 @@
 #!/bin/bash
-# NexConnect AWS EC2 Deployment Script
+# Nextou AWS EC2 Deployment Script
 # 
 # Usage: ./deploy.sh
 # Run this script on your EC2 instance (Ubuntu 22.04+ recommended)
 
 set -e
 
-echo "🚀 Starting NexConnect Deployment Process..."
+echo "🚀 Starting Nextou Deployment Process..."
 
 # 1. System Updates & Docker Installation
 if ! command -v docker &> /dev/null

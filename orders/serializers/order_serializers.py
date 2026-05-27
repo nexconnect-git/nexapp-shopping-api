@@ -184,6 +184,7 @@ class CreateOrderSerializer(serializers.Serializer):
     confirm_far_delivery = serializers.BooleanField(required=False, default=False)
     cod_upi_confirmed = serializers.BooleanField(required=False, default=False)
     client_price_breakup = serializers.JSONField(required=False, default=dict)
+    client_idempotency_key = serializers.CharField(required=False, allow_blank=True, default="", max_length=120)
     # Optional: pre-verified Razorpay payment proof (from the new initiate-first flow)
     razorpay_order_id = serializers.CharField(required=False, allow_blank=True, default="")
     razorpay_payment_id = serializers.CharField(required=False, allow_blank=True, default="")

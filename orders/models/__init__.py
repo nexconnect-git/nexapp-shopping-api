@@ -6,7 +6,9 @@ from .order_tracking import OrderTracking
 from .order_issue import OrderIssue, IssueMessage, OrderIssueAttachment
 from .setting import PlatformSetting
 from .banner import PlatformBanner
+from .customer_content import CustomerContentBlock
 from .operations import DeliveryZone, FeatureFlag, RefundLedger, TaxRule
+from .payment import PaymentSession
 
 __all__ = [
     'Cart',
@@ -22,8 +24,10 @@ __all__ = [
     'OrderIssueAttachment',
     'PlatformSetting',
     'PlatformBanner',
+    'CustomerContentBlock',
     'RefundLedger',
     'DeliveryZone',
     'TaxRule',
     'FeatureFlag',
+    'PaymentSession',
 ]

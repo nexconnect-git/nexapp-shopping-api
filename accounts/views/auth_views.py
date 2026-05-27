@@ -1,7 +1,10 @@
 """Auth views for registration, login, token refresh, and initial setup."""
 
+import hmac
+
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
+from django.http import Http404
 from django_ratelimit.decorators import ratelimit
 from django.utils.decorators import method_decorator
 from rest_framework import status
@@ -23,6 +26,16 @@ from accounts.actions.auth_actions import (
 )
 from accounts.data.user_repository import UserRepository
 from accounts.helpers.token_helpers import clear_refresh_cookie, set_refresh_cookie
+from accounts.serializers.user_serializers import UserProfileSerializer
+
+
+def _without_refresh_token(payload: dict) -> dict:
+    response_payload = payload.copy()
+    tokens = response_payload.get('tokens')
+    if isinstance(tokens, dict):
+        response_payload['tokens'] = tokens.copy()
+        response_payload['tokens'].pop('refresh', None)
+    return response_payload
 
 
 @method_decorator(ratelimit(key='ip', rate='10/h', method='POST', block=True), name='post')
@@ -35,7 +48,7 @@ class RegisterView(APIView):
         try:
             result = RegisterAction(data=request.data).execute()
             refresh_token = result['tokens']['refresh']
-            response = Response(result, status=status.HTTP_201_CREATED)
+            response = Response(_without_refresh_token(result), status=status.HTTP_201_CREATED)
             set_refresh_cookie(response, refresh_token)
             return response
         except ValueError as exc:
@@ -55,7 +68,7 @@ class LoginView(APIView):
         try:
             result = LoginAction(username=username, password=password).execute()
             refresh_token = result['tokens']['refresh']
-            response = Response(result)
+            response = Response(_without_refresh_token(result))
             set_refresh_cookie(response, refresh_token)
             return response
         except ValueError as exc:
@@ -85,7 +98,7 @@ class VerifyLoginOTPView(APIView):
         try:
             result = VerifyMobileOTPAction(request.data, purpose='login').execute()
             refresh_token = result['tokens']['refresh']
-            response = Response(result)
+            response = Response(_without_refresh_token(result))
             set_refresh_cookie(response, refresh_token)
             return response
         except ValueError as exc:
@@ -112,7 +125,7 @@ class VerifyRegisterOTPView(APIView):
         try:
             result = VerifyMobileOTPAction(request.data, purpose='register').execute()
             refresh_token = result['tokens']['refresh']
-            response = Response(result, status=status.HTTP_201_CREATED)
+            response = Response(_without_refresh_token(result), status=status.HTTP_201_CREATED)
             set_refresh_cookie(response, refresh_token)
             return response
         except ValueError as exc:
@@ -180,6 +193,16 @@ class CookieTokenRefreshView(APIView):
         if not refresh_token:
             return Response({'error': 'Refresh token is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        user = None
+        try:
+            user_id = RefreshToken(refresh_token).get(settings.SIMPLE_JWT['USER_ID_CLAIM'])
+            if user_id:
+                user = UserProfileSerializer.Meta.model.objects.filter(pk=user_id).first()
+        except TokenError:
+            response = Response({'error': 'Refresh token is invalid or expired.'}, status=status.HTTP_401_UNAUTHORIZED)
+            clear_refresh_cookie(response)
+            return response
+
         serializer = TokenRefreshSerializer(data={'refresh': refresh_token})
         try:
             serializer.is_valid(raise_exception=True)
@@ -190,9 +213,11 @@ class CookieTokenRefreshView(APIView):
 
         response_tokens = {'access': serializer.validated_data['access']}
         rotated_refresh = serializer.validated_data.get('refresh')
-        response = Response({'tokens': response_tokens})
+        response = Response({
+            'tokens': response_tokens,
+            'user': UserProfileSerializer(user).data if user else None,
+        })
         if rotated_refresh:
-            response_tokens['refresh'] = rotated_refresh
             set_refresh_cookie(response, rotated_refresh)
         return response
 
@@ -208,6 +233,14 @@ class SetupSuperUserView(APIView):
         return Response({'needs_setup': not has_superuser})
 
     def post(self, request):
+        if not getattr(settings, 'INITIAL_SUPERUSER_SETUP_ENABLED', False):
+            raise Http404
+
+        expected_token = getattr(settings, 'INITIAL_SUPERUSER_SETUP_TOKEN', '')
+        supplied_token = request.data.get('setup_token') or request.headers.get('X-Setup-Token') or ''
+        if not expected_token or not hmac.compare_digest(str(supplied_token), str(expected_token)):
+            return Response({'error': 'A valid setup token is required.'}, status=status.HTTP_403_FORBIDDEN)
+
         try:
             result = SetupSuperUserAction(data=request.data).execute()
             return Response(result, status=status.HTTP_201_CREATED)

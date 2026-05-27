@@ -161,6 +161,7 @@ class AdminPaymentsView(generics.ListAPIView):
 
 _PLATFORM_SETTING_FIELDS = [
     "upi_id",
+    "cod_payment_qr",
     "delivery_base_fee",
     "delivery_per_km_fee",
     "free_delivery_above",

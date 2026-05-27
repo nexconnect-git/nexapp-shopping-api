@@ -39,6 +39,10 @@ class DeliveryAssignment(models.Model):
 
     class Meta:
         app_label = 'delivery'
+        indexes = [
+            models.Index(fields=['status', 'last_search_at'], name='assign_status_search_idx'),
+            models.Index(fields=['accepted_partner', 'status'], name='assign_partner_status_idx'),
+        ]
 
     def __str__(self):
         return f"Assignment for {self.order.order_number} [{self.status}]"

@@ -2,6 +2,7 @@ asgiref==3.11.1
 cffi==2.0.0
 cryptography==46.0.5
 Django==4.2.29
+Jinja2==3.1.4
 django-cors-headers==4.9.0
 django-filter==25.1
 djangorestframework==3.17.0
@@ -42,6 +43,7 @@ razorpay==1.4.2
 
 # HTTP client (used by FCM fallback and Razorpay webhooks)
 requests==2.32.3
+chardet==5.2.0
 
 # razorpay SDK uses pkg_resources; pin setuptools to a version that still ships it
 setuptools<70

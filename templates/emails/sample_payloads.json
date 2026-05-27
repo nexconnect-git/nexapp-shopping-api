@@ -1,0 +1,35 @@
+{
+  "customer_welcome": {
+    "brand_name": "Nextou",
+    "start_shopping_url": "https://nextou.in",
+    "coupon_code": "NEXTOU25",
+    "delivery_time": "20 mins",
+    "current_year": 2025
+  },
+  "vendor_welcome": {
+    "brand_name": "Nextou",
+    "vendor_name": "Fresh Basket Mart",
+    "complete_setup_url": "https://vendor.nextou.in/store-settings",
+    "partner_support_url": "https://vendor.nextou.in/support"
+  },
+  "vendor_approved": {
+    "brand_name": "Nextou",
+    "vendor_name": "Fresh Basket Mart",
+    "dashboard_url": "https://vendor.nextou.in"
+  },
+  "otp_email": {
+    "brand_name": "Nextou",
+    "otp_code": "482614",
+    "app_url": "https://nextou.in"
+  },
+  "admin_vendor_self_register_alert": {
+    "brand_name": "Nextou",
+    "vendor_name": "Fresh Basket Mart",
+    "vendor_phone": "+91 98765 43210",
+    "vendor_email": "owner@freshbasket.in",
+    "vendor_city": "Bengaluru",
+    "vendor_category": "Grocery",
+    "review_application_url": "https://admin.nextou.in/vendors/pending",
+    "admin_panel_url": "https://admin.nextou.in"
+  }
+}

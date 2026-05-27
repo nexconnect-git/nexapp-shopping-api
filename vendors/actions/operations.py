@@ -90,9 +90,14 @@ class VendorOperationsSummaryAction(BaseAction):
 
 class VendorLiveOrdersAction(BaseAction):
     def execute(self, vendor):
+        release_at = timezone.now() + timedelta(
+            minutes=int(getattr(vendor, "scheduled_buffer_min", 0) or 30)
+        )
         return Order.objects.filter(
             vendor=vendor,
             placed_at__gte=timezone.now() - timedelta(days=14),
+        ).filter(
+            Q(scheduled_for__isnull=True) | Q(scheduled_for__lte=release_at)
         ).select_related("customer", "vendor", "delivery_address", "delivery_partner").prefetch_related(
             "items", "tracking"
         ).order_by("-placed_at")

@@ -1,5 +1,6 @@
 import uuid
 from django.db import models
+from django.db.models import Q
 from accounts.models import User, Address
 from helpers.upload_paths import UserDateUploadPath
 from products.models import Product
@@ -66,6 +67,7 @@ class Order(models.Model):
     loyalty_discount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     price_breakup = models.JSONField(default=dict, blank=True)
     payment_metadata = models.JSONField(default=dict, blank=True)
+    client_idempotency_key = models.CharField(max_length=120, blank=True, default='', db_index=True)
     scheduled_for = models.DateTimeField(null=True, blank=True, help_text='Customer-requested delivery time')
     notes = models.TextField(blank=True)
     pickup_otp = models.CharField(max_length=6, blank=True, default='')
@@ -83,6 +85,19 @@ class Order(models.Model):
     class Meta:
         app_label = 'orders'
         ordering = ['-placed_at']
+        indexes = [
+            models.Index(fields=['customer', 'status', '-placed_at'], name='ord_cust_status_placed_idx'),
+            models.Index(fields=['vendor', 'status', '-placed_at'], name='ord_vendor_status_pl_idx'),
+            models.Index(fields=['delivery_partner', 'status'], name='ord_delivery_status_idx'),
+            models.Index(fields=['status', '-placed_at'], name='ord_status_placed_idx'),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['customer', 'vendor', 'client_idempotency_key'],
+                condition=~Q(client_idempotency_key=''),
+                name='unique_order_idempotency_per_customer_vendor',
+            ),
+        ]
 
     def __str__(self):
         return f"Order #{self.order_number}"

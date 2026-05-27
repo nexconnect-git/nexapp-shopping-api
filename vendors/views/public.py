@@ -18,6 +18,7 @@ from helpers.vendor_hours import is_vendor_open_now
 from orders.models import OrderItem
 from products.models import Product
 from products.serializers import CategorySerializer, ProductSerializer
+from vendors.actions import SendVendorSelfRegistrationEmailsAction
 from vendors.data import VendorProductRepository, VendorRepository
 from vendors.models import Vendor
 from vendors.serializers.public import VendorListSerializer, VendorRegistrationSerializer, VendorSerializer
@@ -77,8 +78,15 @@ def _get_matching_product_names(vendor, product_query: str) -> list[str]:
     return list(products.values_list("name", flat=True).distinct()[:3])
 
 
-def _serialize_vendor_cards(request, vendors, address: Address | None, product_query: str = "") -> list[dict]:
+def _serialize_vendor_cards(
+    request,
+    vendors,
+    address: Address | None,
+    product_query: str = "",
+    previous_vendor_ids=None,
+) -> list[dict]:
     cards = []
+    previous_vendor_ids = previous_vendor_ids or set()
 
     for vendor in vendors:
         payload = VendorListSerializer(vendor, context={"request": request}).data
@@ -103,7 +111,10 @@ def _serialize_vendor_cards(request, vendors, address: Address | None, product_q
             payload.setdefault("max_supported_distance_km", 0)
             payload.setdefault("instant_radius_km", 0)
 
-        payload["has_previously_ordered"] = bool(getattr(vendor, "has_previously_ordered", False))
+        payload["has_previously_ordered"] = (
+            vendor.id in previous_vendor_ids
+            or bool(getattr(vendor, "has_previously_ordered", False))
+        )
         cards.append(payload)
 
     cards.sort(
@@ -160,6 +171,7 @@ class VendorRegistrationView(APIView):
         serializer = VendorRegistrationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         vendor = serializer.save()
+        SendVendorSelfRegistrationEmailsAction().execute(vendor)
         refresh = RefreshToken.for_user(vendor.user)
         return Response(
             {
@@ -247,13 +259,27 @@ class VendorListView(APIView):
 
         if city:
             vendors = vendors.filter(city__iexact=city)
+        vendors = vendors.filter(is_open=True, is_accepting_orders=True)
 
+        previous_vendor_ids = set()
         if getattr(request.user, "is_authenticated", False):
             vendors = repo.annotate_previous_order_flag(vendors, request.user)
+            previous_vendor_ids = set(
+                OrderItem.objects.filter(order__customer=request.user)
+                .values_list("order__vendor_id", flat=True)
+                .distinct()
+            )
         vendors = repo.with_available_products(vendors)
 
-        cards = _serialize_vendor_cards(request, list(vendors.distinct()), address, product_query=product_query or search)
-        cards = [card for card in cards if card.get("is_serviceable", True)]
+        cards = _serialize_vendor_cards(
+            request,
+            list(vendors.distinct()),
+            address,
+            product_query=product_query or search,
+            previous_vendor_ids=previous_vendor_ids,
+        )
+        if search_mode not in {"manual_far", "global_item"} and not include_far_same_state:
+            cards = [card for card in cards if card.get("is_serviceable", True)]
         cards = _sort_vendor_cards(cards, sort_key)
         grouped_cards = {
             "nearby": [card for card in cards if card.get("within_instant_radius")],

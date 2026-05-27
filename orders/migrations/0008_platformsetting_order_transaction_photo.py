@@ -11,7 +11,7 @@ class Migration(migrations.Migration):
             name='PlatformSetting',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('upi_id', models.CharField(default='nexconnect@ybl', max_length=100)),
+                ('upi_id', models.CharField(default='nextou@ybl', max_length=100)),
             ],
         ),
         migrations.AddField(

@@ -18,6 +18,7 @@ from orders.models import Order
 from orders.serializers import OrderSerializer
 from delivery.data.partner_repo import DeliveryPartnerRepository
 from orders.data.order_repo import OrderRepository
+from delivery.actions.partner_actions import UpdateLocationAction
 
 
 class DeliveryPartnerRegistrationView(APIView):
@@ -101,18 +102,12 @@ class UpdateLocationView(APIView):
         serializer = UpdateLocationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        partner = request.user.delivery_profile
-        had_no_location = not partner.current_latitude
-        
-        url_data = {"current_latitude": serializer.validated_data["latitude"], "current_longitude": serializer.validated_data["longitude"]}
-        if partner.status == "offline":
-            url_data["status"] = "available"
-        
-        DeliveryPartnerRepository.update(partner, **url_data)
-
-        if had_no_location and partner.status == "available":
-            for assignment in DeliveryAssignment.objects.filter(status__in=["searching", "notified"]):
-                search_and_notify_partners.delay(str(assignment.id))
+        UpdateLocationAction.execute(
+            user=request.user,
+            latitude=serializer.validated_data["latitude"],
+            longitude=serializer.validated_data["longitude"],
+            order_id=serializer.validated_data.get("order_id"),
+        )
 
         return Response({"status": "Location updated."})
 

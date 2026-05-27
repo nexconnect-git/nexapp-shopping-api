@@ -24,6 +24,7 @@ from orders.views.operations_admin_views import (
     AdminTaxRuleListCreateView,
 )
 from orders.views.banner_views import AdminBannerDetailView, AdminBannerListCreateView, BannerListView
+from orders.views.customer_content_admin_views import AdminCustomerContentBlockDetailView, AdminCustomerContentBlockListCreateView
 from orders.views.customer_content_views import CustomerContentConfigView
 
 __all__ = [
@@ -45,4 +46,5 @@ __all__ = [
     'AdminFinanceExportView',
     'AdminBannerDetailView', 'AdminBannerListCreateView', 'BannerListView',
     'CustomerContentConfigView',
+    'AdminCustomerContentBlockListCreateView', 'AdminCustomerContentBlockDetailView',
 ]

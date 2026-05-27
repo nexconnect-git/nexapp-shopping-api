@@ -1,0 +1,37 @@
+{# Nextou base email template. CSS is inline-friendly for email clients. #}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="x-apple-disable-message-reformatting">
+  <title>{{ subject|default("Nextou") }}</title>
+</head>
+<body style="margin:0;padding:0;background:#f5f2ff;font-family:Arial,Helvetica,sans-serif;color:#17152b;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">{{ preheader|default("Fast. Fresh. Delivered.") }}</div>
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f5f2ff;margin:0;padding:28px 12px;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:760px;background:#fff;border-radius:24px;overflow:hidden;box-shadow:0 18px 60px rgba(44,22,120,.14);">
+        <tr><td style="background:linear-gradient(135deg,#3212bd 0%,#5c22f0 48%,#842fff 100%);padding:34px 40px 24px;color:#fff;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr>
+            <td align="left" style="font-size:28px;font-weight:800;letter-spacing:-.5px;"><span style="font-size:30px;vertical-align:-2px;">⚡</span> {{ brand_name|default("Nextou") }}</td>
+            <td align="right" style="font-size:14px;font-weight:700;color:#fff6a8;">{{ brand_tagline|default("Fast. Fresh. Delivered. ⚡") }}</td>
+          </tr></table>
+          {% block hero %}{% endblock %}
+        </td></tr>
+        <tr><td style="padding:0 28px 28px;background:#fff;">{% block content %}{% endblock %}</td></tr>
+        <tr><td style="border-top:1px solid #ece8fb;background:#fff;padding:26px 34px;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr>
+            <td style="vertical-align:top;width:28%;padding-right:16px;"><div style="font-size:22px;font-weight:800;color:#531df0;"><span style="font-size:24px;vertical-align:-2px;">⚡</span> {{ brand_name|default("Nextou") }}</div><p style="margin:10px 0 0;color:#6f7190;font-size:13px;line-height:1.5;">{{ footer_description|default("Everything you need, delivered in minutes.") }}</p></td>
+            <td style="vertical-align:top;width:24%;padding:0 16px;border-left:1px solid #ece8fb;"><div style="font-weight:800;font-size:14px;color:#151432;margin-bottom:10px;">Need help?</div><div style="font-size:13px;line-height:1.8;color:#6f7190;"><a href="{{ help_url|default('#') }}" style="color:#6f7190;text-decoration:none;">Help Center</a><br><a href="{{ faq_url|default('#') }}" style="color:#6f7190;text-decoration:none;">FAQs</a><br><a href="{{ support_url|default('#') }}" style="color:#6f7190;text-decoration:none;">Support</a></div></td>
+            <td style="vertical-align:top;width:26%;padding:0 16px;border-left:1px solid #ece8fb;"><div style="font-weight:800;font-size:14px;color:#151432;margin-bottom:10px;">Get in touch</div><div style="font-size:13px;line-height:1.8;color:#6f7190;">☎ {{ support_phone|default("+91 80 1234 5678") }}<br>✉ {{ support_email|default("support@nextou.in") }}<br>◷ {{ support_hours|default("Mon - Sun: 7AM - 11PM") }}</div></td>
+            <td style="vertical-align:top;width:22%;padding-left:16px;border-left:1px solid #ece8fb;"><div style="font-weight:800;font-size:14px;color:#151432;margin-bottom:10px;">Follow us</div><div style="font-size:20px;letter-spacing:6px;">📸 f 🐦 ▶</div></td>
+          </tr></table>
+        </td></tr>
+        <tr><td style="background:#faf9ff;border-top:1px solid #ece8fb;padding:16px 34px;color:#8586a3;font-size:12px;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td>© {{ current_year|default("2025") }} {{ brand_name|default("Nextou") }}. All rights reserved.</td><td align="right">{{ email_reason|default("You are receiving this email from Nextou.") }}</td></tr></table></td></tr>
+      </table>
+      <div style="max-width:760px;margin:14px auto 0;color:#9693aa;font-size:11px;line-height:1.5;">{{ legal_note|default("This is an automated email. Please do not reply directly to this message.") }}</div>
+    </td></tr>
+  </table>
+</body>
+</html>

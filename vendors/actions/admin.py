@@ -31,6 +31,8 @@ class ReviewVendorKycAction(BaseAction):
 
         onboarding, _ = VendorOnboarding.objects.get_or_create(vendor=vendor)
 
+        old_status = vendor.status
+
         if action == "approve":
             onboarding.kyc_status = "verified"
             onboarding.onboarding_status = "approved"
@@ -38,7 +40,8 @@ class ReviewVendorKycAction(BaseAction):
             vendor.status = "approved"
             vendor.save(update_fields=["status"])
             _create_audit_log(vendor, "kyc_approved", "KYC verified and vendor account approved.", request)
-            vendor_approved.send(sender=Vendor, vendor=vendor)
+            if old_status != "approved":
+                vendor_approved.send(sender=Vendor, vendor=vendor)
         else:
             onboarding.kyc_status = "rejected"
             onboarding.onboarding_status = "rejected"
@@ -65,10 +68,11 @@ class UpdateVendorStatusAction(BaseAction):
         if new_status not in ["pending", "approved", "rejected", "suspended"]:
             raise ValueError("status must be pending, approved, rejected, or suspended")
 
+        old_status = vendor.status
         vendor.status = new_status
         vendor.save(update_fields=["status"])
 
-        if new_status == "approved":
+        if new_status == "approved" and old_status != "approved":
             vendor_approved.send(sender=Vendor, vendor=vendor)
 
         return vendor

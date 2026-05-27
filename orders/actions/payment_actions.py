@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class CreateRazorpayOrderAction(BaseAction):
-    """Creates a Razorpay order for a NexConnect order and stores the order ID.
+    """Creates a Razorpay order for a Nextou order and stores the order ID.
 
     The frontend uses the returned ``razorpay_order_id``, ``amount``, and
     ``key_id`` to open the Razorpay checkout modal.

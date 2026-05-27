@@ -16,7 +16,12 @@ class PlatformSetting(models.Model):
         PAYMENT_METHOD_COD,
     ]
 
-    upi_id = models.CharField(max_length=100, default='nexconnect@ybl')
+    upi_id = models.CharField(max_length=100, default='nextou@ybl')
+    cod_payment_qr = models.TextField(
+        blank=True,
+        default='',
+        help_text='Optional manually uploaded data URL for pay-at-delivery QR.'
+    )
     enabled_payment_methods = models.JSONField(
         default=list,
         blank=True,

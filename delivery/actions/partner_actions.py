@@ -1,15 +1,30 @@
 from typing import Any
 from django.db import transaction
+from rest_framework.exceptions import PermissionDenied
 from delivery.models import DeliveryPartner, DeliveryAssignment
 from delivery.tasks import search_and_notify_partners
+from orders.models import Order
 
 
 class UpdateLocationAction:
     @staticmethod
     @transaction.atomic
-    def execute(user: Any, latitude: float, longitude: float) -> DeliveryPartner:
+    def execute(user: Any, latitude: float, longitude: float, order_id: str | None = None) -> DeliveryPartner:
         partner = user.delivery_profile
         had_no_location = not partner.current_latitude
+
+        if not partner.is_approved:
+            raise PermissionDenied("Delivery partner is not approved.")
+
+        active_order_qs = Order.objects.select_for_update().filter(
+            delivery_partner=user,
+            status__in=["ready", "picked_up", "on_the_way"],
+        )
+        if order_id:
+            if not active_order_qs.filter(pk=order_id).exists():
+                raise PermissionDenied("Location updates are allowed only for assigned active orders.")
+        elif partner.status == "on_delivery" and not active_order_qs.exists():
+            raise PermissionDenied("No active assigned order for location tracking.")
 
         partner.current_latitude = latitude
         partner.current_longitude = longitude

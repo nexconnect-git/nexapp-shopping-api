@@ -11,21 +11,35 @@ media/
 venv/
 env/
 *.log
+*.md
 
-# Tests
-test/
-tests/
+# Tests and seed data
 **/test/
 **/tests/
-**/tests.py
-**/tests_*.py
 **/test_*.py
 **/*_test.py
-!helpers/tests.py
-!files/tests.py
+**/*_tests.py
+**/*seed*
+**/*fixture*
 
-# Seeding files
-products/management/commands/seed_customer_realtime_data.py
+# Static/media assets
+static/
+staticfiles/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.svg
+*.ico
+*.avif
+*.mp4
+*.mov
+*.webm
+*.woff
+*.woff2
+*.ttf
+*.otf
 # Agent files
 .agent/
 .codex-artifacts/

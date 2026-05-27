@@ -63,13 +63,13 @@ def process_order_invoice_and_email(order_id):
         attachment_path = invoice.pdf_file.path if invoice.pdf_file else None
         attachment_name = f"Invoice_{invoice.invoice_number}.pdf"
         
-        body_text = f"Hello {order.customer.first_name},\n\nThank you for your order {order.order_number}! Your invoice is attached.\n\nBest,\nNexConnect Team"
+        body_text = f"Hello {order.customer.first_name},\n\nThank you for your order {order.order_number}! Your invoice is attached.\n\nBest,\nNextou Team"
         
         # We can directly call the email sending here since we are already in a background worker, 
         # or we could enqueue it again. Direct call is simpler.
         if attachment_path:
             email = EmailMessage(
-                subject=f"Your NexConnect Order Invoice #{order.order_number}",
+                subject=f"Your Nextou Order Invoice #{order.order_number}",
                 body=body_text,
                 from_email=settings.DEFAULT_FROM_EMAIL,
                 to=[order.customer.email]

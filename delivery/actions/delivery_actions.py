@@ -1,4 +1,4 @@
-import random
+import secrets
 from typing import Any
 from django.db import transaction
 from django.utils import timezone
@@ -57,7 +57,7 @@ class UpdateDeliveryStatusAction:
 
         update_fields = ["status", "updated_at"]
         if new_status == "on_the_way" and not order.delivery_otp:
-            order.delivery_otp = str(random.randint(100000, 999999))
+            order.delivery_otp = f"{secrets.randbelow(900000) + 100000}"
             update_fields.append("delivery_otp")
 
         order.save(update_fields=update_fields)

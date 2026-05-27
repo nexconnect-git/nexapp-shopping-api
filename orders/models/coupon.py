@@ -43,6 +43,10 @@ class Coupon(models.Model):
     class Meta:
         app_label = 'orders'
         ordering = ['display_order', '-created_at']
+        indexes = [
+            models.Index(fields=['code', 'is_active', 'valid_from', 'valid_until'], name='coupon_code_active_valid_idx'),
+            models.Index(fields=['vendor', 'is_active', 'valid_from'], name='coupon_vendor_active_idx'),
+        ]
 
     def __str__(self):
         return f"{self.code} — {self.title}"
@@ -71,6 +75,15 @@ class CouponUsage(models.Model):
 
     class Meta:
         app_label = 'orders'
+        indexes = [
+            models.Index(fields=['coupon', 'user', '-used_at'], name='coupon_usage_user_idx'),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['coupon', 'user', 'order'],
+                name='unique_coupon_usage_per_order',
+            ),
+        ]
 
     def __str__(self):
         return f"{self.coupon.code} used by {self.user.username}"
