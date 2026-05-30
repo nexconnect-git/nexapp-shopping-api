@@ -77,6 +77,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'backend.request_logging_middleware.RequestLoggingMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -389,6 +390,78 @@ if _sentry_dsn:
         traces_sample_rate=float(os.environ.get('SENTRY_TRACES_SAMPLE_RATE', '0.1')),
         send_default_pii=False,
     )
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+
+APP_LOG_LEVEL = os.environ.get('APP_LOG_LEVEL', 'INFO').upper()
+APP_LOG_FILE_NAME = os.environ.get('APP_LOG_FILE_NAME', 'application.log')
+APP_LOG_DIR = Path(os.environ.get('APP_LOG_DIR', BASE_DIR / 'runtime_logs'))
+APP_LOG_S3_PREFIX = (os.environ.get('APP_LOG_S3_PREFIX', 'logs') or 'logs').strip('/') or 'logs'
+APP_LOG_UPLOAD_INTERVAL_SECONDS = int(os.environ.get('APP_LOG_UPLOAD_INTERVAL_SECONDS', '30'))
+APP_LOG_TIMEZONE = os.environ.get('APP_LOG_TIMEZONE', 'Asia/Kolkata')
+APP_LOG_RQ_QUEUE = os.environ.get('APP_LOG_RQ_QUEUE', 'default')
+APP_LOG_S3_BUCKET = os.environ.get('AWS_STORAGE_BUCKET_NAME', '')
+ENABLE_S3_LOG_ARCHIVE = env_bool('ENABLE_S3_LOG_ARCHIVE', USE_S3 and bool(APP_LOG_S3_BUCKET))
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'filters': {
+        'request_context': {
+            '()': 'helpers.logging_filters.RequestContextFilter',
+        },
+    },
+    'formatters': {
+        'standard': {
+            'format': (
+                '%(asctime)s %(levelname)s [%(name)s] '
+                '[user=%(username)s request_id=%(request_id)s] %(message)s'
+            ),
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'standard',
+            'filters': ['request_context'],
+        },
+        'per_user_daily': {
+            'class': 'helpers.logging_handlers.PerUserDailyS3Handler',
+            'formatter': 'standard',
+            'filters': ['request_context'],
+            'local_base_dir': str(APP_LOG_DIR),
+            'filename': APP_LOG_FILE_NAME,
+            's3_enabled': ENABLE_S3_LOG_ARCHIVE,
+            's3_bucket': APP_LOG_S3_BUCKET,
+            's3_prefix': APP_LOG_S3_PREFIX,
+            's3_region_name': os.environ.get('AWS_S3_REGION_NAME', 'ap-southeast-2'),
+            's3_endpoint_url': os.environ.get('AWS_S3_ENDPOINT_URL') or None,
+            'aws_access_key_id': os.environ.get('AWS_ACCESS_KEY_ID') or None,
+            'aws_secret_access_key': os.environ.get('AWS_SECRET_ACCESS_KEY') or None,
+            'rq_queue_name': APP_LOG_RQ_QUEUE,
+            'upload_interval_seconds': APP_LOG_UPLOAD_INTERVAL_SECONDS,
+            'timezone_name': APP_LOG_TIMEZONE,
+        },
+    },
+    'root': {
+        'handlers': ['console', 'per_user_daily'],
+        'level': APP_LOG_LEVEL,
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console', 'per_user_daily'],
+            'level': APP_LOG_LEVEL,
+            'propagate': False,
+        },
+        'backend.request': {
+            'handlers': ['console', 'per_user_daily'],
+            'level': APP_LOG_LEVEL,
+            'propagate': False,
+        },
+    },
+}
 
 # ---------------------------------------------------------------------------
 # Security (production hardening — active when DEBUG=False)
