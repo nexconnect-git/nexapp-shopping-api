@@ -1,6 +1,9 @@
 from typing import Any
 from django.db import transaction
+from django.utils.crypto import get_random_string
 from rest_framework.exceptions import PermissionDenied
+
+from delivery.data.partner_repo import DeliveryPartnerRepository
 from delivery.models import DeliveryPartner, DeliveryAssignment
 from delivery.tasks import search_and_notify_partners
 from orders.models import Order
@@ -76,3 +79,25 @@ class AdminTogglePartnerApprovalAction:
             
         partner.save(update_fields=["is_approved", "status", "updated_at"])
         return partner
+
+
+class AdminGeneratePartnerTemporaryPasswordAction:
+    @staticmethod
+    @transaction.atomic
+    def execute(partner_id: str) -> tuple[DeliveryPartner, str]:
+        try:
+            partner = DeliveryPartnerRepository.get_by_id(
+                partner_id,
+                select_related=["user"],
+            )
+        except DeliveryPartner.DoesNotExist as exc:
+            raise ValueError("Delivery partner not found.") from exc
+
+        temporary_password = get_random_string(12)
+        partner.user.set_password(temporary_password)
+        partner.user.force_password_change = True
+        partner.user.temp_password = temporary_password
+        partner.user.save(
+            update_fields=["password", "force_password_change", "temp_password"],
+        )
+        return partner, temporary_password

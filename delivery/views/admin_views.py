@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsAdminRole
+from delivery.actions import AdminGeneratePartnerTemporaryPasswordAction
 from delivery.models import DeliveryEarning
 from delivery.serializers import (
     DeliveryPartnerRegistrationSerializer,
@@ -51,8 +52,12 @@ class AdminDeliveryPartnerListView(APIView):
         serializer.is_valid(raise_exception=True)
         partner = serializer.save()
         data = DeliveryPartnerSerializer(partner).data
-        if hasattr(partner, "auto_generated_password"):
-            data["temp_password"] = partner.auto_generated_password
+        temporary_password = (
+            getattr(partner, "auto_generated_password", "")
+            or data.get("user", {}).get("temp_password", "")
+        )
+        if temporary_password:
+            data["temp_password"] = temporary_password
         return Response(data, status=status.HTTP_201_CREATED)
 
 
@@ -131,3 +136,17 @@ class AdminDeliveryPartnerApprovalView(APIView):
             return Response({"status": "rejected", **DeliveryPartnerSerializer(partner).data})
         else:
             return Response({"error": "action must be 'approve' or 'reject'."}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class AdminDeliveryPartnerTemporaryPasswordView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    def post(self, request, pk):
+        try:
+            partner, temporary_password = AdminGeneratePartnerTemporaryPasswordAction.execute(pk)
+        except ValueError:
+            return Response({"error": "Delivery partner not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        data = DeliveryPartnerSerializer(partner, context={"request": request}).data
+        data["temp_password"] = temporary_password
+        return Response(data)

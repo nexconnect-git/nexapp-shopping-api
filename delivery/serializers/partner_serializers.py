@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.utils.crypto import get_random_string
 from rest_framework import serializers
 
 from accounts.data.user_repository import UserRepository
@@ -113,10 +114,12 @@ class DeliveryPartnerRegistrationSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         password = validated_data.get('password')
+        temporary_password = password
         auto_generated_password = None
         if not password:
-            auto_generated_password = User.objects.make_random_password()
+            auto_generated_password = get_random_string(12)
             password = auto_generated_password
+            temporary_password = auto_generated_password
 
         user = User.objects.create_user(
             username=validated_data['username'],
@@ -127,9 +130,9 @@ class DeliveryPartnerRegistrationSerializer(serializers.Serializer):
             phone=validated_data.get('phone', ''),
             role='delivery',
         )
-        if auto_generated_password:
-            user.force_password_change = True
-            user.save(update_fields=['force_password_change'])
+        user.force_password_change = True
+        user.temp_password = temporary_password
+        user.save(update_fields=['force_password_change', 'temp_password'])
 
         partner = DeliveryPartner.objects.create(
             user=user,

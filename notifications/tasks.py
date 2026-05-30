@@ -59,23 +59,29 @@ def process_order_invoice_and_email(order_id):
                 logger.error(f"PDF generation failed for order {order_id}")
                 return
 
-        # 3. Queue the email job
-        attachment_path = invoice.pdf_file.path if invoice.pdf_file else None
+        # 3. Build attachment data through Django storage APIs.
+        # Avoid FileField.path because non-local backends (e.g. S3) don't support it.
         attachment_name = f"Invoice_{invoice.invoice_number}.pdf"
+        attachment_content = None
+        if invoice.pdf_file:
+            invoice.pdf_file.open('rb')
+            try:
+                attachment_content = invoice.pdf_file.read()
+            finally:
+                invoice.pdf_file.close()
         
         body_text = f"Hello {order.customer.first_name},\n\nThank you for your order {order.order_number}! Your invoice is attached.\n\nBest,\nNextou Team"
         
         # We can directly call the email sending here since we are already in a background worker, 
         # or we could enqueue it again. Direct call is simpler.
-        if attachment_path:
+        if attachment_content:
             email = EmailMessage(
                 subject=f"Your Nextou Order Invoice #{order.order_number}",
                 body=body_text,
                 from_email=settings.DEFAULT_FROM_EMAIL,
                 to=[order.customer.email]
             )
-            with open(attachment_path, 'rb') as f:
-                email.attach(attachment_name, f.read(), 'application/pdf')
+            email.attach(attachment_name, attachment_content, 'application/pdf')
             
             email.send(fail_silently=False)
             logger.info("Successfully sent invoice email for order %s", order.order_number)

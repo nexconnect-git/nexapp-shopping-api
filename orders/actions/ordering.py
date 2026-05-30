@@ -44,7 +44,7 @@ class CreateOrdersFromCartAction(BaseAction):
             existing_orders = list(
                 Order.objects.select_for_update()
                 .filter(customer=user, client_idempotency_key=client_idempotency_key)
-                .select_related("vendor", "delivery_address", "delivery_partner")
+                .select_related("vendor")
                 .prefetch_related("items", "tracking")
                 .order_by("placed_at")
             )
@@ -70,7 +70,7 @@ class CreateOrdersFromCartAction(BaseAction):
         locked_products = {
             product.id: product
             for product in Product.objects.select_for_update()
-            .select_related("vendor", "category")
+            .select_related("vendor")
             .filter(id__in=[item.product_id for item in cart_items])
         }
         for item in cart_items:
