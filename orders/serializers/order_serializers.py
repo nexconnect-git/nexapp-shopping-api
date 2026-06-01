@@ -38,6 +38,10 @@ class OrderSerializer(serializers.ModelSerializer):
     assignment_status = serializers.SerializerMethodField()
     invoice_id = serializers.SerializerMethodField()
     has_rating = serializers.SerializerMethodField()
+    vendor_rating = serializers.SerializerMethodField()
+    vendor_comment = serializers.SerializerMethodField()
+    delivery_rating = serializers.SerializerMethodField()
+    delivery_comment = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -45,7 +49,8 @@ class OrderSerializer(serializers.ModelSerializer):
             "id", "order_number", "customer", "customer_name", "vendor",
             "vendor_name", "vendor_info", "delivery_address", "delivery_partner",
             "delivery_partner_info", "status", "assignment_status", "invoice_id",
-            "has_rating", "payment_method", "subtotal", "delivery_fee", "discount",
+            "has_rating", "vendor_rating", "vendor_comment", "delivery_rating", "delivery_comment",
+            "payment_method", "subtotal", "delivery_fee", "discount",
             "product_discount", "coupon_discount", "platform_fee", "packaging_fee",
             "small_cart_fee", "tax_amount", "surge_fee", "wallet_discount",
             "loyalty_discount", "total", "price_breakup", "payment_metadata",
@@ -63,14 +68,6 @@ class OrderSerializer(serializers.ModelSerializer):
         ]
 
     def get_vendor_info(self, obj) -> dict:
-        """Return key vendor fields embedded in the order response.
-
-        Args:
-            obj: The ``Order`` instance.
-
-        Returns:
-            Dictionary with vendor id, store name, address, and contact info.
-        """
         vendor = obj.vendor
         return {
             "id": str(vendor.id),
@@ -82,14 +79,6 @@ class OrderSerializer(serializers.ModelSerializer):
         }
 
     def get_delivery_partner_info(self, obj) -> dict | None:
-        """Return delivery partner details, or ``None`` if not yet assigned.
-
-        Args:
-            obj: The ``Order`` instance.
-
-        Returns:
-            Dictionary with partner id, name, vehicle info, and rating, or ``None``.
-        """
         if not obj.delivery_partner:
             return None
         user = obj.delivery_partner
@@ -107,68 +96,80 @@ class OrderSerializer(serializers.ModelSerializer):
             return {"id": str(user.id), "name": user.get_full_name() or user.username}
 
     def get_assignment_status(self, obj) -> str | None:
-        """Return the current delivery assignment status, or ``None``.
-
-        Args:
-            obj: The ``Order`` instance.
-
-        Returns:
-            Assignment status string, or ``None`` if no assignment exists.
-        """
         try:
             return obj.assignment.status
         except Exception:
             return None
 
     def get_invoice_id(self, obj):
-        """Return the UUID of the first invoice for this order, or ``None``.
-
-        Args:
-            obj: The ``Order`` instance.
-
-        Returns:
-            Invoice UUID, or ``None``.
-        """
         try:
             return obj.invoices.first().id
         except Exception:
             return None
 
     def get_has_rating(self, obj) -> bool:
-        """Return whether this order has been rated by the customer.
-
-        Args:
-            obj: The ``Order`` instance.
-
-        Returns:
-            ``True`` if a rating exists, ``False`` otherwise.
-        """
         return hasattr(obj, "rating")
+
+    def get_vendor_rating(self, obj) -> int | None:
+        rating = self._get_rating(obj)
+        return rating.vendor_rating if rating else None
+
+    def get_vendor_comment(self, obj) -> str:
+        rating = self._get_rating(obj)
+        return rating.vendor_comment if rating else ""
+
+    def get_delivery_rating(self, obj) -> int | None:
+        rating = self._get_rating(obj)
+        return rating.delivery_rating if rating else None
+
+    def get_delivery_comment(self, obj) -> str:
+        rating = self._get_rating(obj)
+        return rating.delivery_comment if rating else ""
+
+    def _get_rating(self, obj) -> OrderRating | None:
+        try:
+            return obj.rating
+        except OrderRating.DoesNotExist:
+            return None
 
 
 class OrderRatingSerializer(serializers.ModelSerializer):
-    """Serializer for submitting and reading an order rating."""
+    """Serializer for submitting and reading split store/delivery ratings."""
 
     class Meta:
         model = OrderRating
-        fields = ["id", "order", "rating", "created_at"]
+        fields = [
+            "id",
+            "order",
+            "rating",
+            "vendor_rating",
+            "vendor_comment",
+            "delivery_rating",
+            "delivery_comment",
+            "created_at",
+        ]
         read_only_fields = ["id", "order", "created_at"]
 
-    def validate_rating(self, value: int) -> int:
-        """Ensure the rating is between 1 and 5.
+    def validate(self, attrs):
+        for field in ("rating", "vendor_rating", "delivery_rating"):
+            value = attrs.get(field)
+            if value is None:
+                continue
+            if not (1 <= value <= 5):
+                raise serializers.ValidationError(
+                    {field: "Rating must be between 1 and 5."}
+                )
 
-        Args:
-            value: The submitted rating integer.
+        if (
+            attrs.get("rating") is None
+            and attrs.get("vendor_rating") is None
+            and attrs.get("delivery_rating") is None
+        ):
+            raise serializers.ValidationError("Provide at least one rating value.")
 
-        Returns:
-            The validated rating.
-
-        Raises:
-            ValidationError: If the value is outside the 1–5 range.
-        """
-        if not (1 <= value <= 5):
-            raise serializers.ValidationError("Rating must be between 1 and 5.")
-        return value
+        attrs["vendor_comment"] = (attrs.get("vendor_comment") or "").strip()
+        attrs["delivery_comment"] = (attrs.get("delivery_comment") or "").strip()
+        return attrs
 
 
 class CreateOrderSerializer(serializers.Serializer):
@@ -191,17 +192,6 @@ class CreateOrderSerializer(serializers.Serializer):
     razorpay_signature = serializers.CharField(required=False, allow_blank=True, default="")
 
     def validate_delivery_address_id(self, value):
-        """Verify the delivery address belongs to the requesting user.
-
-        Args:
-            value: UUID of the delivery address.
-
-        Returns:
-            The validated address UUID.
-
-        Raises:
-            ValidationError: If the address is not found for this user.
-        """
         user = self.context["request"].user
         try:
             Address.objects.get(id=value, user=user)

@@ -4,8 +4,6 @@ from rest_framework import generics, status, viewsets
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from accounts.permissions import IsDeliveryPartner
-
 from backend.utils import haversine
 from delivery.models import DeliveryAssignment, DeliveryEarning, DeliveryReview
 from delivery.serializers import (
@@ -32,7 +30,7 @@ class DeliveryPartnerRegistrationView(APIView):
 
 
 class DeliveryDashboardView(APIView):
-    permission_classes = [IsAuthenticated, IsDeliveryPartner]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         partner = request.user.delivery_profile
@@ -52,7 +50,7 @@ class DeliveryDashboardView(APIView):
 
 
 class AvailableOrdersView(APIView):
-    permission_classes = [IsAuthenticated, IsDeliveryPartner]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         # Legacy fallback view: Maps exactly to PendingAssignmentRequestsView logic
@@ -96,7 +94,7 @@ class AvailableOrdersView(APIView):
 
 
 class UpdateLocationView(APIView):
-    permission_classes = [IsAuthenticated, IsDeliveryPartner]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         serializer = UpdateLocationSerializer(data=request.data)
@@ -113,7 +111,7 @@ class UpdateLocationView(APIView):
 
 
 class SetAvailabilityView(APIView):
-    permission_classes = [IsAuthenticated, IsDeliveryPartner]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         partner = request.user.delivery_profile
@@ -131,16 +129,30 @@ class SetAvailabilityView(APIView):
 
 
 class DeliveryHistoryView(generics.ListAPIView):
-    permission_classes = [IsAuthenticated, IsDeliveryPartner]
+    permission_classes = [IsAuthenticated]
     serializer_class = OrderSerializer
 
     def get_queryset(self):
         base_qs = OrderRepository.get_base_queryset()
-        return base_qs.filter(delivery_partner=self.request.user, status="delivered")
+        status_param = self.request.query_params.get("status", "")
+        requested_statuses = [
+            value.strip()
+            for value in status_param.split(",")
+            if value.strip()
+        ]
+        allowed_statuses = {"delivered", "cancelled"}
+        statuses = [
+            value for value in requested_statuses if value in allowed_statuses
+        ] or ["delivered", "cancelled"]
+
+        return base_qs.filter(
+            delivery_partner=self.request.user,
+            status__in=statuses,
+        )
 
 
 class DeliveryEarningsView(generics.ListAPIView):
-    permission_classes = [IsAuthenticated, IsDeliveryPartner]
+    permission_classes = [IsAuthenticated]
     serializer_class = DeliveryEarningSerializer
 
     def get_queryset(self):
@@ -149,13 +161,27 @@ class DeliveryEarningsView(generics.ListAPIView):
 
 class DeliveryReviewViewSet(viewsets.ModelViewSet):
     serializer_class = DeliveryReviewSerializer
-    permission_classes = [IsAuthenticated, IsDeliveryPartner]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        user = self.request.user
         partner_id = self.kwargs.get("partner_id")
-        if partner_id:
-            return DeliveryReview.objects.filter(delivery_partner_id=partner_id)
-        return DeliveryReview.objects.all()
+        queryset = DeliveryReview.objects.select_related(
+            "delivery_partner__user", "customer", "order"
+        ).order_by("-created_at")
+
+        if getattr(user, "role", "") == "admin":
+            if partner_id:
+                return queryset.filter(delivery_partner_id=partner_id)
+            return queryset
+
+        if hasattr(user, "delivery_profile"):
+            own_partner_id = str(user.delivery_profile.id)
+            if partner_id and str(partner_id) != own_partner_id:
+                return queryset.none()
+            return queryset.filter(delivery_partner_id=own_partner_id)
+
+        return queryset.none()
 
     def perform_create(self, serializer):
         serializer.save(customer=self.request.user)

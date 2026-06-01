@@ -92,7 +92,12 @@ class PendingAssignmentRequestsView(APIView):
             select_related=["order__vendor"],
             prefetch=["order__items"]
         )
-        return Response(DeliveryAssignmentSerializer(pending_qs, many=True).data)
+        serializer = DeliveryAssignmentSerializer(
+            pending_qs,
+            many=True,
+            context={"request": request},
+        )
+        return Response(serializer.data)
 
 
 class AcceptAssignmentView(APIView):

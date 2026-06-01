@@ -121,6 +121,8 @@ def search_and_notify_partners(assignment_id: str) -> None:
                 "order_number": order.order_number,
                 "assignment_id": str(assignment.id),
                 "type": "assignment_request",
+                "target_route": "/available",
+                "target_action": "open_assignment_request",
             }
             Notification.objects.create(
                 user=partner.user,
@@ -272,6 +274,8 @@ def check_assignment_timeout(assignment_id: str) -> None:
             "order_id": str(order.id),
             "order_number": order.order_number,
             "type": "assignment_timeout",
+            "target_route": "/history",
+            "target_action": "assignment_timeout",
         },
     )
 

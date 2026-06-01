@@ -395,7 +395,11 @@ if _sentry_dsn:
 # Logging
 # ---------------------------------------------------------------------------
 
-APP_LOG_LEVEL = os.environ.get('APP_LOG_LEVEL', 'INFO').upper()
+_requested_log_level = os.environ.get('APP_LOG_LEVEL', 'WARNING').upper()
+if _requested_log_level in {'NOTSET', 'DEBUG', 'INFO'}:
+    APP_LOG_LEVEL = 'WARNING'
+else:
+    APP_LOG_LEVEL = _requested_log_level
 APP_LOG_FILE_NAME = os.environ.get('APP_LOG_FILE_NAME', 'application.log')
 APP_LOG_DIR = Path(os.environ.get('APP_LOG_DIR', BASE_DIR / 'runtime_logs'))
 APP_LOG_S3_PREFIX = (os.environ.get('APP_LOG_S3_PREFIX', 'logs') or 'logs').strip('/') or 'logs'
@@ -424,11 +428,13 @@ LOGGING = {
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
+            'level': APP_LOG_LEVEL,
             'formatter': 'standard',
             'filters': ['request_context'],
         },
         'per_user_daily': {
             'class': 'helpers.logging_handlers.PerUserDailyS3Handler',
+            'level': APP_LOG_LEVEL,
             'formatter': 'standard',
             'filters': ['request_context'],
             'local_base_dir': str(APP_LOG_DIR),

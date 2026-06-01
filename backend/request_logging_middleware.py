@@ -35,7 +35,7 @@ class RequestLoggingMiddleware:
         else:
             elapsed_ms = int((time.monotonic() - start_time) * 1000)
             response["X-Request-ID"] = request_id
-            request_logger.info(
+            request_logger.debug(
                 "request_completed method=%s path=%s status=%s elapsed_ms=%s",
                 request.method,
                 request.get_full_path(),
@@ -52,4 +52,3 @@ class RequestLoggingMiddleware:
         if not user or not getattr(user, "is_authenticated", False):
             return "anonymous"
         return getattr(user, "username", "") or getattr(user, "email", "") or str(user.id)
-

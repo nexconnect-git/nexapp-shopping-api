@@ -2,101 +2,14 @@ from orders.actions.base import BaseAction
 from orders.data.customer_content_repo import CustomerContentBlockRepository
 
 
-DEFAULT_HOME_ADS = [
-    {
-        'id': 'home-ad-grocery',
-        'eyebrow': 'Today only',
-        'title': 'Top picks for your kitchen',
-        'subtitle': 'Curated products from live vendor catalogs.',
-        'ctaLabel': 'Shop picks',
-        'ctaUrl': '/search?q=grocery',
-        'icon': 'shopping_basket',
-        'tone': 'purple',
-        'template': 'soft_card',
-    },
-    {
-        'id': 'home-ad-offers',
-        'eyebrow': 'Store promos',
-        'title': 'Free delivery and fresh deals',
-        'subtitle': 'Offers appear as vendors publish them.',
-        'ctaLabel': 'See stores',
-        'ctaUrl': '/stores',
-        'icon': 'delivery_truck_speed',
-        'tone': 'green',
-        'template': 'soft_card',
-    },
-]
-
-DEFAULT_HOME_ENGAGEMENT_BANNERS = [
-    {
-        'id': 'nextou-club',
-        'eyebrow': 'Nextou Club',
-        'title': 'Save more on repeat orders',
-        'subtitle': 'Order again, collect offers, and keep your everyday essentials close.',
-        'ctaLabel': 'Explore rewards',
-        'ctaUrl': '/wallet',
-        'icon': 'workspace_premium',
-        'tone': 'green',
-        'template': 'club_banner',
-    },
-]
-
 DEFAULT_ADS = {
-    'home': DEFAULT_HOME_ADS,
-    'search': [
-        {
-            'id': 'search-ad',
-            'eyebrow': 'Tip',
-            'title': 'Use filters to find faster delivery',
-            'subtitle': 'Sort by rating, delivery time, category, or price.',
-            'ctaLabel': 'Open filters',
-            'ctaUrl': '',
-            'icon': 'tune',
-            'tone': 'blue',
-            'template': 'soft_card',
-        },
-    ],
-    'storeListing': [
-        {
-            'id': 'store-listing-offers',
-            'eyebrow': 'Running offers',
-            'title': 'Shop vendor deals near you',
-            'subtitle': 'Look for offer badges on store cards before checkout.',
-            'ctaLabel': 'Browse stores',
-            'ctaUrl': '/stores',
-            'icon': 'local_offer',
-            'tone': 'orange',
-            'template': 'soft_card',
-        },
-    ],
-    'storeDetail': [
-        {
-            'id': 'store-detail-offer',
-            'eyebrow': 'Store offer',
-            'title': 'Add more to unlock vendor deals',
-            'subtitle': 'Final discounts and delivery estimates are confirmed at checkout.',
-            'ctaLabel': 'Add products',
-            'ctaUrl': '',
-            'icon': 'sell',
-            'tone': 'purple',
-            'template': 'soft_card',
-        },
-    ],
+    'home': [],
+    'search': [],
+    'storeListing': [],
+    'storeDetail': [],
 }
-
-DEFAULT_OFFERS_SHOP_BANNERS = [
-    {
-        'id': 'coupon-strip',
-        'eyebrow': 'Collect deals',
-        'title': 'Vendor offers update live',
-        'subtitle': 'Coupon availability depends on your selected store, address, and cart value.',
-        'ctaLabel': 'Browse stores',
-        'ctaUrl': '/stores',
-        'icon': 'redeem',
-        'tone': 'purple',
-        'template': 'soft_card',
-    },
-]
+DEFAULT_HOME_ENGAGEMENT_BANNERS = []
+DEFAULT_OFFERS_SHOP_BANNERS = []
 
 PLACEMENT_TO_CONFIG_KEY = {
     'home_ad': ('ads', 'home'),

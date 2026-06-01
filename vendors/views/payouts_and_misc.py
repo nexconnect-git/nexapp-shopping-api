@@ -11,7 +11,7 @@ from rest_framework.permissions import IsAuthenticated
 from accounts.permissions import IsApprovedVendor
 from orders.models import Coupon
 from orders.serializers import CouponSerializer
-from vendors.models import VendorPayout, VendorReview
+from vendors.models import Vendor, VendorPayout, VendorReview
 from vendors.serializers import VendorPayoutSerializer, VendorReviewSerializer
 from vendors.views.public import StandardPagination
 
@@ -134,5 +134,21 @@ class VendorReviewViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
 
     def list(self, request, vendor_id=None):
+        if not vendor_id:
+            return Response({"error": "vendor_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            vendor = Vendor.objects.get(id=vendor_id)
+        except Vendor.DoesNotExist:
+            return Response({"error": "Vendor not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        is_admin = bool(getattr(request.user, "role", "") == "admin")
+        is_owner = bool(
+            hasattr(request.user, "vendor_profile")
+            and str(request.user.vendor_profile.id) == str(vendor.id)
+        )
+        if not (is_admin or is_owner):
+            return Response({"error": "Access denied."}, status=status.HTTP_403_FORBIDDEN)
+
         queryset = VendorReview.objects.filter(vendor_id=vendor_id).order_by("-created_at")
         return Response(VendorReviewSerializer(queryset, many=True).data)

@@ -101,10 +101,10 @@ class UnreadCountView(APIView):
             request: Authenticated DRF request.
 
         Returns:
-            200 with ``{"unread_count": <int>}``.
+            200 with ``{"unread_count": <int>, "count": <int>}``.
         """
         count = Notification.objects.filter(user=request.user, is_read=False).count()
-        return Response({"unread_count": count})
+        return Response({"unread_count": count, "count": count})
 
 
 class DeviceTokenView(APIView):
