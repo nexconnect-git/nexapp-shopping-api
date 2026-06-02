@@ -1,4 +1,5 @@
 import uuid
+from django.core.exceptions import ValidationError
 from django.db import models
 from vendors.models import Vendor
 from products.models.catalog import CatalogProduct
@@ -139,6 +140,20 @@ class Product(models.Model):
 
     def __str__(self):
         return self.name
+
+    def requires_catalog_product_for_sellable_state(self):
+        return (
+            self.status == "active"
+            and self.is_available
+            and self.approval_status == self.APPROVAL_STATUS_APPROVED
+        )
+
+    def clean(self):
+        super().clean()
+        if self.requires_catalog_product_for_sellable_state() and not self.catalog_product_id:
+            raise ValidationError({
+                "catalog_product": "Sellable vendor products must inherit an approved catalog item."
+            })
 
     @property
     def discount_percentage(self):

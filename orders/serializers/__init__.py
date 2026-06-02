@@ -1,4 +1,4 @@
-from .cart_serializers import CartItemSerializer, CartSerializer, AddToCartSerializer
+from .cart_serializers import CartItemSerializer, CartSerializer, AddToCartSerializer, ReplaceCartSerializer
 from .order_serializers import (
     OrderItemSerializer, OrderTrackingSerializer, OrderSerializer,
     OrderRatingSerializer, CreateOrderSerializer,
@@ -13,7 +13,7 @@ from .operations_serializers import (
 )
 
 __all__ = [
-    'CartItemSerializer', 'CartSerializer', 'AddToCartSerializer',
+    'CartItemSerializer', 'CartSerializer', 'AddToCartSerializer', 'ReplaceCartSerializer',
     'OrderItemSerializer', 'OrderTrackingSerializer', 'OrderSerializer',
     'OrderRatingSerializer', 'CreateOrderSerializer',
     'CouponSerializer',

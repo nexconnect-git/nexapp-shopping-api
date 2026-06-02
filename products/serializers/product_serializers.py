@@ -242,6 +242,34 @@ class ProductCreateUpdateSerializer(serializers.ModelSerializer):
             n += 1
         return candidate
 
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        instance = self.instance
+        catalog_product = attrs.get(
+            "catalog_product",
+            instance.catalog_product if instance else None,
+        )
+        status = attrs.get("status", instance.status if instance else "active")
+        is_available = attrs.get(
+            "is_available",
+            instance.is_available if instance else True,
+        )
+        approval_status = (
+            instance.approval_status
+            if instance
+            else Product.APPROVAL_STATUS_DRAFT
+        )
+        if (
+            status == "active"
+            and is_available
+            and approval_status == Product.APPROVAL_STATUS_APPROVED
+            and not catalog_product
+        ):
+            raise serializers.ValidationError({
+                "catalog_product": "Sellable vendor products must inherit an approved catalog item."
+            })
+        return attrs
+
     def create(self, validated_data):
         """Auto-assign the vendor from request context and generate slug."""
         if not validated_data.get("catalog_product"):

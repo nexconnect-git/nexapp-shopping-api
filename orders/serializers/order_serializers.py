@@ -4,6 +4,11 @@ from rest_framework import serializers
 
 from accounts.models import Address
 from accounts.serializers import AddressSerializer
+from helpers.status_helpers import (
+    normalize_order_delivery_status,
+    normalize_order_status,
+    normalize_payment_status,
+)
 from orders.models import Order, OrderItem, OrderTracking, OrderRating
 
 
@@ -12,17 +17,37 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = OrderItem
-        fields = ["id", "product", "product_name", "product_price", "quantity", "subtotal"]
+        fields = [
+            "id",
+            "product",
+            "catalog_product",
+            "vendor",
+            "product_name",
+            "product_brand",
+            "product_unit",
+            "product_pack_size",
+            "product_sku",
+            "product_slug",
+            "product_price",
+            "product_compare_price",
+            "quantity",
+            "subtotal",
+        ]
         read_only_fields = ["id"]
 
 
 class OrderTrackingSerializer(serializers.ModelSerializer):
     """Serializer for an order tracking event."""
 
+    normalized_status = serializers.SerializerMethodField()
+
     class Meta:
         model = OrderTracking
-        fields = ["id", "status", "description", "latitude", "longitude", "timestamp"]
+        fields = ["id", "status", "normalized_status", "description", "latitude", "longitude", "timestamp"]
         read_only_fields = ["id", "timestamp"]
+
+    def get_normalized_status(self, obj) -> str:
+        return normalize_order_status(obj.status)
 
 
 class OrderSerializer(serializers.ModelSerializer):
@@ -42,13 +67,17 @@ class OrderSerializer(serializers.ModelSerializer):
     vendor_comment = serializers.SerializerMethodField()
     delivery_rating = serializers.SerializerMethodField()
     delivery_comment = serializers.SerializerMethodField()
+    normalized_status = serializers.SerializerMethodField()
+    payment_status = serializers.SerializerMethodField()
+    delivery_status = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
         fields = [
             "id", "order_number", "customer", "customer_name", "vendor",
             "vendor_name", "vendor_info", "delivery_address", "delivery_partner",
-            "delivery_partner_info", "status", "assignment_status", "invoice_id",
+            "delivery_partner_info", "status", "normalized_status", "payment_status",
+            "delivery_status", "assignment_status", "invoice_id",
             "has_rating", "vendor_rating", "vendor_comment", "delivery_rating", "delivery_comment",
             "payment_method", "subtotal", "delivery_fee", "discount",
             "product_discount", "coupon_discount", "platform_fee", "packaging_fee",
@@ -125,6 +154,15 @@ class OrderSerializer(serializers.ModelSerializer):
     def get_delivery_comment(self, obj) -> str:
         rating = self._get_rating(obj)
         return rating.delivery_comment if rating else ""
+
+    def get_normalized_status(self, obj) -> str:
+        return normalize_order_status(obj.status)
+
+    def get_payment_status(self, obj) -> str:
+        return normalize_payment_status(obj)
+
+    def get_delivery_status(self, obj) -> str | None:
+        return normalize_order_delivery_status(obj, self.get_assignment_status(obj))
 
     def _get_rating(self, obj) -> OrderRating | None:
         try:

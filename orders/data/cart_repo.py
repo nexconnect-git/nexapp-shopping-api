@@ -19,11 +19,15 @@ class CartRepository:
     def add_item(cart, product, quantity):
         cart_item, created = CartItem.objects.get_or_create(
             cart=cart, product=product,
-            defaults={"quantity": quantity},
+            defaults={"quantity": quantity, "price_at_add": product.price},
         )
         if not created:
             cart_item.quantity += quantity
-            cart_item.save()
+            update_fields = ["quantity"]
+            if cart_item.price_at_add is None:
+                cart_item.price_at_add = product.price
+                update_fields.append("price_at_add")
+            cart_item.save(update_fields=update_fields)
         return cart_item, created
 
     @staticmethod

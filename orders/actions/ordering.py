@@ -25,13 +25,24 @@ from orders.actions.checkout import (
     validate_single_vendor_cart,
 )
 from orders.actions.refund_actions import IssueRazorpayRefundAction
-from orders.models import Cart, Coupon, CouponUsage, IssueMessage, Order, OrderIssue, OrderItem, OrderTracking
+from orders.models import (
+    Cart,
+    Coupon,
+    CouponUsage,
+    InventoryReservation,
+    IssueMessage,
+    Order,
+    OrderIssue,
+    OrderItem,
+    OrderTracking,
+)
 from orders.serializers import IssueMessageSerializer
 from products.actions.inventory import DecreaseStockAction
+from products.data.product_repository import ProductRepository
 from products.models import Product
 from vendors.realtime import broadcast_order_event
 
-from .base import BaseAction
+from orders.actions.base import BaseAction
 
 
 class CreateOrdersFromCartAction(BaseAction):
@@ -63,20 +74,22 @@ class CreateOrdersFromCartAction(BaseAction):
         except Cart.DoesNotExist:
             raise ValueError("Cart is empty.")
 
-        cart_items = list(cart.items.select_related("product__vendor").all())
+        cart_items = list(cart.items.select_related("product__vendor", "product__catalog_product").all())
         if not cart_items:
             raise ValueError("Cart is empty.")
 
         locked_products = {
             product.id: product
-            for product in Product.objects.select_for_update()
-            .select_related("vendor")
+            for product in Product.objects.select_for_update(of=("self",))
+            .select_related("vendor", "catalog_product")
             .filter(id__in=[item.product_id for item in cart_items])
         }
         for item in cart_items:
             product = locked_products.get(item.product_id)
             if not product:
                 raise ValueError("One or more cart products are no longer available.")
+            if not self._is_orderable_product(product):
+                raise ValueError(f"'{product.name}' is no longer available for ordering.")
             item.product = product
 
         coupon = None
@@ -282,15 +295,35 @@ class CreateOrdersFromCartAction(BaseAction):
             )
 
             for item in items:
-                OrderItem.objects.create(
+                reservation = InventoryReservation.objects.create(
+                    cart=cart,
                     order=order,
                     product=item.product,
+                    vendor=item.product.vendor,
+                    quantity=item.quantity,
+                    price_at_reservation=item.product.price,
+                    reserved_until=InventoryReservation.default_expiry(),
+                )
+                order_item = OrderItem.objects.create(
+                    order=order,
+                    product=item.product,
+                    catalog_product=item.product.catalog_product,
+                    vendor=item.product.vendor,
                     product_name=item.product.name,
+                    product_brand=item.product.brand,
+                    product_unit=item.product.unit,
+                    product_pack_size=item.product.weight,
+                    product_sku=item.product.sku,
+                    product_slug=item.product.slug,
                     product_price=item.product.price,
+                    product_compare_price=item.product.compare_price,
                     quantity=item.quantity,
                     subtotal=item.product.price * item.quantity,
                 )
                 decrease_stock.execute(str(item.product.pk), item.quantity)
+                reservation.order_item = order_item
+                reservation.save(update_fields=["order_item", "updated_at"])
+                reservation.commit()
 
             OrderTracking.objects.create(order=order, status="placed", description="Order has been placed.")
             if vendor.auto_order_acceptance:
@@ -384,6 +417,14 @@ class CreateOrdersFromCartAction(BaseAction):
 
         return created_orders
 
+    def _is_orderable_product(self, product) -> bool:
+        return (
+            product.approval_status == ProductRepository.CUSTOMER_VISIBLE_FILTERS["approval_status"]
+            and product.status == ProductRepository.CUSTOMER_VISIBLE_FILTERS["status"]
+            and product.is_available == ProductRepository.CUSTOMER_VISIBLE_FILTERS["is_available"]
+            and bool(product.catalog_product_id)
+        )
+
 
 class CancelOrderAction(BaseAction):
     @transaction.atomic
@@ -424,6 +465,15 @@ class CancelOrderAction(BaseAction):
                 ProductModel.objects.filter(pk=item.product.pk).update(stock=F("stock") + item.quantity)
                 if item.product.status == "sold_out":
                     ProductModel.objects.filter(pk=item.product.pk).update(status="active")
+
+        InventoryReservation.objects.filter(
+            order=order,
+            status=InventoryReservation.STATUS_COMMITTED,
+        ).update(
+            status=InventoryReservation.STATUS_RELEASED,
+            released_at=timezone.now(),
+            updated_at=timezone.now(),
+        )
 
         if order.wallet_discount > Decimal("0"):
             try:
@@ -469,6 +519,21 @@ class AdminUpdateOrderStatusAction(BaseAction):
         old_status = order.status
         order.status = new_status
         order.save(update_fields=["status", "updated_at"])
+
+        if new_status == "cancelled" and old_status != "cancelled":
+            for item in order.items.select_related("product").all():
+                if item.product:
+                    Product.objects.filter(pk=item.product.pk).update(stock=F("stock") + item.quantity)
+                    if item.product.status == "sold_out":
+                        Product.objects.filter(pk=item.product.pk).update(status="active")
+            InventoryReservation.objects.filter(
+                order=order,
+                status=InventoryReservation.STATUS_COMMITTED,
+            ).update(
+                status=InventoryReservation.STATUS_RELEASED,
+                released_at=timezone.now(),
+                updated_at=timezone.now(),
+            )
 
         if new_status == "cancelled" and order.payment_method == "razorpay" and order.is_payment_verified and not order.razorpay_refund_id:
             try:

@@ -11,6 +11,7 @@ urlpatterns = [
     path('', include(router.urls)),
     path('cart/', views.CartView.as_view(), name='cart'),
     path('cart/add/', views.AddToCartView.as_view(), name='cart-add'),
+    path('cart/replace/', views.ReplaceCartView.as_view(), name='cart-replace'),
     path('cart/items/<uuid:pk>/', views.UpdateCartItemView.as_view(), name='cart-item-update'),
     path('cart/clear/', views.ClearCartView.as_view(), name='cart-clear'),
     path('cancellation-policy/', views.CancellationPolicyView.as_view(), name='cancellation-policy'),

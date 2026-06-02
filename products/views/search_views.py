@@ -9,6 +9,7 @@ from accounts.models import Address
 from helpers.delivery_quotes import quote_vendor_delivery
 from helpers.cache_helpers import cached_api_response
 from products.models import Product
+from products.data.product_repository import ProductRepository
 from products.serializers import ProductSerializer
 from vendors.serializers.public import VendorListSerializer
 
@@ -97,10 +98,7 @@ class ProductSearchByLocationView(APIView):
         products = (
             Product.objects
             .filter(
-                approval_status=Product.APPROVAL_STATUS_APPROVED,
-                status="active",
-                is_available=True,
-                stock__gt=0,
+                **ProductRepository.customer_visible_filter(),
                 vendor__status="approved",
                 vendor__is_accepting_orders=True,
             )

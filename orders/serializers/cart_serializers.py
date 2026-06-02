@@ -3,6 +3,7 @@
 from rest_framework import serializers
 
 from orders.models import Cart, CartItem
+from products.data.product_repository import ProductRepository
 from products.models import Product
 from products.serializers import ProductListSerializer
 
@@ -15,7 +16,7 @@ class CartItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CartItem
-        fields = ["id", "product", "quantity", "subtotal", "added_at"]
+        fields = ["id", "product", "quantity", "price_at_add", "subtotal", "added_at"]
         read_only_fields = ["id", "added_at"]
 
 
@@ -51,9 +52,16 @@ class AddToCartSerializer(serializers.Serializer):
             ValidationError: If the product is not found, unavailable, or out of stock.
         """
         try:
-            product = Product.objects.get(id=value, is_available=True)
+            product = Product.objects.get(
+                id=value,
+                **ProductRepository.customer_visible_filter(),
+            )
         except Product.DoesNotExist:
             raise serializers.ValidationError("Product not found or unavailable.")
         if product.stock < 1:
             raise serializers.ValidationError("Product is out of stock.")
         return value
+
+
+class ReplaceCartSerializer(AddToCartSerializer):
+    """Write serializer for atomically replacing the cart with one product."""

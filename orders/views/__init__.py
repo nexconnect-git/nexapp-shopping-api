@@ -1,4 +1,4 @@
-from orders.views.cart_views import CartView, AddToCartView, UpdateCartItemView, ClearCartView
+from orders.views.cart_views import CartView, AddToCartView, ReplaceCartView, UpdateCartItemView, ClearCartView
 from orders.views.payment_views import CreateRazorpayOrderView, VerifyRazorpayPaymentView, RazorpayWebhookView, InitiateCheckoutPaymentView, PaymentMethodsView
 from orders.views.order_views import (
     CreateOrderView, OrderListView, OrderDetailView, CancelOrderView,
@@ -28,7 +28,7 @@ from orders.views.customer_content_admin_views import AdminCustomerContentBlockD
 from orders.views.customer_content_views import CustomerContentConfigView
 
 __all__ = [
-    'CartView', 'AddToCartView', 'UpdateCartItemView', 'ClearCartView',
+    'CartView', 'AddToCartView', 'ReplaceCartView', 'UpdateCartItemView', 'ClearCartView',
     'CreateRazorpayOrderView', 'VerifyRazorpayPaymentView', 'RazorpayWebhookView', 'InitiateCheckoutPaymentView', 'PaymentMethodsView',
     'CreateOrderView', 'OrderListView', 'OrderDetailView', 'CancelOrderView',
     'OrderTrackingView', 'OrderPaymentQRView', 'SubmitOrderRatingView',

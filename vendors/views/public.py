@@ -17,6 +17,7 @@ from helpers.delivery_quotes import quote_vendor_delivery
 from helpers.vendor_hours import is_vendor_open_now
 from orders.models import OrderItem
 from products.models import Product
+from products.data.product_repository import ProductRepository
 from products.serializers import CategorySerializer, ProductSerializer
 from vendors.actions import SendVendorSelfRegistrationEmailsAction
 from vendors.data import VendorProductRepository, VendorRepository
@@ -68,10 +69,7 @@ def _get_matching_product_names(vendor, product_query: str) -> list[str]:
         return []
     products = Product.objects.filter(
         vendor=vendor,
-        approval_status=Product.APPROVAL_STATUS_APPROVED,
-        status="active",
-        is_available=True,
-        stock__gt=0,
+        **ProductRepository.customer_visible_filter(),
         category__is_active=True,
         category__show_in_customer_ui=True,
     ).filter(search_q)
@@ -443,10 +441,7 @@ class VendorRecommendationsView(APIView):
 
         base_qs = Product.objects.filter(
             vendor=vendor,
-            approval_status=Product.APPROVAL_STATUS_APPROVED,
-            status="active",
-            is_available=True,
-            stock__gt=0,
+            **ProductRepository.customer_visible_filter(),
             category__is_active=True,
             category__show_in_customer_ui=True,
         ).select_related("category")

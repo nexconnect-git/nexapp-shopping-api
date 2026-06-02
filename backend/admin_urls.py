@@ -34,6 +34,7 @@ from delivery.views import (
     AdminDeliveryPartnerApprovalView,
     AdminDeliveryPartnerEarningsCalculationView,
     AdminDeliveryPartnerTemporaryPasswordView,
+    AdminDeliveryReassignView,
     AdminAssetListCreateView,
     AdminAssetDetailView,
     AdminDeliveryPayoutListView,
@@ -130,6 +131,7 @@ urlpatterns = [
     path('delivery-partners/<uuid:pk>/calculate-earnings/', AdminDeliveryPartnerEarningsCalculationView.as_view(), name='admin-delivery-partner-earnings'),
     path('delivery-partners/<uuid:pk>/approve/', AdminDeliveryPartnerApprovalView.as_view(), name='admin-delivery-partner-approve'),
     path('delivery-partners/<uuid:pk>/temporary-password/', AdminDeliveryPartnerTemporaryPasswordView.as_view(), name='admin-delivery-partner-temporary-password'),
+    path('delivery/orders/<uuid:pk>/reassign/', AdminDeliveryReassignView.as_view(), name='admin-delivery-reassign'),
 
     # Delivery payouts
     path('payouts/delivery/', AdminDeliveryPayoutListView.as_view(), name='admin-delivery-payouts'),

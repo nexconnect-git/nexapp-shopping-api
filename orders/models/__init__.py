@@ -9,6 +9,7 @@ from .banner import PlatformBanner
 from .customer_content import CustomerContentBlock
 from .operations import DeliveryZone, FeatureFlag, RefundLedger, TaxRule
 from .payment import PaymentSession
+from .inventory_reservation import InventoryReservation
 
 __all__ = [
     'Cart',
@@ -30,4 +31,5 @@ __all__ = [
     'TaxRule',
     'FeatureFlag',
     'PaymentSession',
+    'InventoryReservation',
 ]

@@ -2,6 +2,7 @@ from django.db.models import BooleanField, Count, DecimalField, Exists, F, Outer
 from django.db.models.functions import Coalesce
 
 from products.models import Product
+from products.data.product_repository import ProductRepository
 from orders.models import Order
 from vendors.data.base import BaseRepository
 from vendors.models import Vendor
@@ -32,6 +33,13 @@ def _product_query_for_terms(terms):
     return search_q
 
 
+def _customer_visible_product_filters(prefix="products__"):
+    return {
+        f"{prefix}{key}": value
+        for key, value in ProductRepository.customer_visible_filter().items()
+    }
+
+
 class VendorRepository(BaseRepository):
     def __init__(self):
         super().__init__(model=Vendor)
@@ -56,18 +64,29 @@ class VendorRepository(BaseRepository):
                 Q(products__category__name__iexact=category) |
                 Q(products__category__parent__slug=category) |
                 Q(products__category__parent__name__iexact=category),
-                products__status="active",
-                products__is_available=True,
+                products__approval_status=ProductRepository.CUSTOMER_VISIBLE_FILTERS["approval_status"],
+                products__catalog_product__isnull=False,
+                products__status=ProductRepository.CUSTOMER_VISIBLE_FILTERS["status"],
+                products__is_available=ProductRepository.CUSTOMER_VISIBLE_FILTERS["is_available"],
                 products__stock__gt=0,
                 products__category__is_active=True,
                 products__category__show_in_customer_ui=True,
             ).distinct()
         if max_price is not None:
-            qs = qs.filter(products__price__lte=max_price).distinct()
+            qs = qs.filter(
+                **_customer_visible_product_filters(),
+                products__price__lte=max_price,
+            ).distinct()
         if min_rating is not None:
-            qs = qs.filter(products__average_rating__gte=min_rating).distinct()
+            qs = qs.filter(
+                **_customer_visible_product_filters(),
+                products__average_rating__gte=min_rating,
+            ).distinct()
         if str(offers or "").lower() in {"true", "1", "yes"}:
-            qs = qs.filter(products__compare_price__gt=F("products__price")).distinct()
+            qs = qs.filter(
+                **_customer_visible_product_filters(),
+                products__compare_price__gt=F("products__price"),
+            ).distinct()
         return qs
 
     def get_approved_vendors_in_state(self, state, search=None, category=None):
@@ -93,10 +112,7 @@ class VendorRepository(BaseRepository):
         if not terms:
             return self.model.objects.none()
         product_vendor_ids = Product.objects.filter(
-            approval_status=Product.APPROVAL_STATUS_APPROVED,
-            status="active",
-            is_available=True,
-            stock__gt=0,
+            **ProductRepository.customer_visible_filter(),
             category__is_active=True,
             category__show_in_customer_ui=True,
         ).filter(_product_query_for_terms(terms)).values("vendor_id").distinct()
@@ -108,10 +124,7 @@ class VendorRepository(BaseRepository):
     def with_available_products(self, queryset):
         products = (
             Product.objects.filter(
-                approval_status=Product.APPROVAL_STATUS_APPROVED,
-                status="active",
-                is_available=True,
-                stock__gt=0,
+                **ProductRepository.customer_visible_filter(),
                 category__is_active=True,
                 category__show_in_customer_ui=True,
             )
@@ -165,10 +178,7 @@ class VendorProductRepository(BaseRepository):
     ):
         qs = self.filter(
             vendor=vendor,
-            approval_status=Product.APPROVAL_STATUS_APPROVED,
-            status="active",
-            is_available=True,
-            stock__gt=0,
+            **ProductRepository.customer_visible_filter(),
             category__is_active=True,
             category__show_in_customer_ui=True,
         ).select_related("category", "catalog_product").prefetch_related("images", "catalog_product__images")

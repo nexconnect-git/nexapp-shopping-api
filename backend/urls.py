@@ -19,6 +19,8 @@ urlpatterns = [
 
     # Auth & core apps
     path('api/auth/', include('accounts.urls')),
+    path('api/customer/', include('backend.customer_urls')),
+    path('api/vendor/', include('backend.vendor_alias_urls')),
     path('api/vendors/', include('vendors.urls')),
     path('api/products/', include('products.urls')),
     path('api/orders/', include('orders.urls')),
@@ -28,6 +30,7 @@ urlpatterns = [
     path('api/invoices/', include('invoices.urls')),
     path('api/files/', include('files.urls')),
     path('api/media/<path:path>/', MediaFileView.as_view(), name='media-file'),
+    path('api/admin/', include('backend.admin_alias_urls')),
     path('api/admin/', include('backend.admin_urls')),
 
     # OpenAPI / Swagger

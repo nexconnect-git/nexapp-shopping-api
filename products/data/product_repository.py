@@ -9,6 +9,18 @@ from products.models.product import Product
 class ProductRepository:
     """All ORM access for the Product model lives here."""
     CUSTOMER_VISIBLE_APPROVAL_STATUS = Product.APPROVAL_STATUS_APPROVED
+    CUSTOMER_VISIBLE_FILTERS = {
+        "approval_status": CUSTOMER_VISIBLE_APPROVAL_STATUS,
+        "status": "active",
+        "is_available": True,
+        "stock__gt": 0,
+        "catalog_product__isnull": False,
+    }
+
+    @classmethod
+    def customer_visible_filter(cls, **extra_filters):
+        filters = {**cls.CUSTOMER_VISIBLE_FILTERS, **extra_filters}
+        return filters
 
     @staticmethod
     def get_by_id(pk, select_related=None) -> Product | None:
@@ -40,12 +52,7 @@ class ProductRepository:
     @staticmethod
     def get_all(select_related=None, prefetch_related=None):
         """Return all products with optional related data fetching."""
-        qs = Product.objects.filter(
-            approval_status=ProductRepository.CUSTOMER_VISIBLE_APPROVAL_STATUS,
-            status="active",
-            is_available=True,
-            stock__gt=0,
-        )
+        qs = Product.objects.filter(**ProductRepository.customer_visible_filter())
         if select_related:
             qs = qs.select_related(*select_related)
         if prefetch_related:
@@ -57,10 +64,7 @@ class ProductRepository:
         """Return featured, available products."""
         return Product.objects.filter(
             is_featured=True,
-            is_available=True,
-            status="active",
-            stock__gt=0,
-            approval_status=ProductRepository.CUSTOMER_VISIBLE_APPROVAL_STATUS,
+            **ProductRepository.customer_visible_filter(),
         )
 
     @staticmethod
@@ -87,9 +91,11 @@ class ProductRepository:
         Returns:
             Filtered queryset with vendor, category, and images pre-fetched.
         """
-        qs = Product.objects.select_related("vendor", "category").prefetch_related("images")
-        qs = qs.filter(approval_status=ProductRepository.CUSTOMER_VISIBLE_APPROVAL_STATUS)
-        qs = qs.filter(status="active", stock__gt=0)
+        qs = Product.objects.select_related("vendor", "category", "catalog_product").prefetch_related(
+            "images",
+            "catalog_product__images",
+        )
+        qs = qs.filter(**ProductRepository.customer_visible_filter())
         if category:
             qs = qs.filter(category__slug=category)
         if vendor:

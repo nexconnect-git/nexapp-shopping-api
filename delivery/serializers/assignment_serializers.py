@@ -5,10 +5,14 @@ from rest_framework import serializers
 
 from delivery.models import DeliveryAssignment
 from helpers.geo_helpers import calculate_eta_minutes, haversine
+from helpers.status_helpers import normalize_assignment_status, normalize_order_status
 
 
 class DeliveryAssignmentSerializer(serializers.ModelSerializer):
     order_number = serializers.CharField(source='order.order_number', read_only=True)
+    normalized_status = serializers.SerializerMethodField()
+    order_status = serializers.CharField(source='order.status', read_only=True)
+    normalized_order_status = serializers.SerializerMethodField()
     vendor_name = serializers.CharField(source='order.vendor.store_name', read_only=True)
     vendor_lat = serializers.DecimalField(
         source='order.vendor.latitude', max_digits=9, decimal_places=6, read_only=True
@@ -30,14 +34,21 @@ class DeliveryAssignmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = DeliveryAssignment
         fields = [
-            'id', 'status', 'current_radius_km',
-            'order', 'order_number', 'vendor_name', 'vendor_lat', 'vendor_lng',
+            'id', 'status', 'normalized_status', 'current_radius_km',
+            'order', 'order_number', 'order_status', 'normalized_order_status',
+            'vendor_name', 'vendor_lat', 'vendor_lng',
             'vendor_address', 'order_total', 'order_items',
             'expires_at', 'seconds_remaining',
             'pickup_distance_km', 'drop_distance_km', 'estimated_eta_minutes',
             'created_at', 'updated_at',
         ]
         read_only_fields = fields
+
+    def get_normalized_status(self, obj):
+        return normalize_assignment_status(obj.status)
+
+    def get_normalized_order_status(self, obj):
+        return normalize_order_status(obj.order.status)
 
     def get_order_items(self, obj):
         return [

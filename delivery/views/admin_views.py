@@ -6,13 +6,14 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsAdminRole
-from delivery.actions import AdminGeneratePartnerTemporaryPasswordAction
+from delivery.actions import AdminGeneratePartnerTemporaryPasswordAction, AdminReassignDeliveryAction
 from delivery.models import DeliveryEarning
 from delivery.serializers import (
     DeliveryPartnerRegistrationSerializer,
     DeliveryPartnerSerializer,
 )
 from delivery.data.partner_repo import DeliveryPartnerRepository
+from orders.serializers import OrderSerializer
 
 
 class StandardPagination(PageNumberPagination):
@@ -150,3 +151,29 @@ class AdminDeliveryPartnerTemporaryPasswordView(APIView):
         data = DeliveryPartnerSerializer(partner, context={"request": request}).data
         data["temp_password"] = temporary_password
         return Response(data)
+
+
+class AdminDeliveryReassignView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    def post(self, request, pk):
+        delivery_partner_id = str(request.data.get("delivery_partner_id") or "").strip()
+        reason = str(request.data.get("reason") or "").strip()
+        try:
+            order = AdminReassignDeliveryAction.execute(
+                str(pk),
+                request.user,
+                delivery_partner_id=delivery_partner_id,
+                reason=reason,
+                request=request,
+            )
+            return Response(
+                {
+                    "status": "reassigned",
+                    "order": OrderSerializer(order).data,
+                }
+            )
+        except ValueError as exc:
+            if "not found" in str(exc).lower():
+                return Response({"error": str(exc)}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)

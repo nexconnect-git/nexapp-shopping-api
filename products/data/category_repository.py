@@ -5,6 +5,7 @@ from django.db import models
 from helpers.delivery_quotes import quote_vendor_delivery
 from products.models.category import Category
 from products.models.product import Product
+from products.data.product_repository import ProductRepository
 from vendors.models import Vendor
 
 
@@ -37,10 +38,7 @@ class CategoryRepository:
             category__isnull=False,
             category__is_active=True,
             category__show_in_customer_ui=True,
-            approval_status=Product.APPROVAL_STATUS_APPROVED,
-            status="active",
-            is_available=True,
-            stock__gt=0,
+            **ProductRepository.customer_visible_filter(),
         ).select_related("category", "category__parent", "vendor")
 
         if vendor_id:

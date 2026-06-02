@@ -78,6 +78,11 @@ class ProductApprovalPolicy:
             "approval_change_summary",
         ]
 
+    @classmethod
+    def ensure_catalog_for_sellable_state(cls, product):
+        if product.requires_catalog_product_for_sellable_state() and not product.catalog_product_id:
+            raise ValueError("Sellable vendor products must inherit an approved catalog item.")
+
 
 class UpdateVendorProductAction:
     def execute(self, product, update_data):
@@ -104,6 +109,8 @@ class UpdateVendorProductAction:
         }
         if should_request_review:
             update_fields.extend(ProductApprovalPolicy.mark_requires_review(product, changed_crucial_fields))
+
+        ProductApprovalPolicy.ensure_catalog_for_sellable_state(product)
 
         if update_fields:
             update_fields.append("updated_at")

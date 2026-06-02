@@ -23,6 +23,7 @@ from .admin_views import (
     AdminDeliveryPartnerEarningsCalculationView,
     AdminDeliveryPartnerApprovalView,
     AdminDeliveryPartnerTemporaryPasswordView,
+    AdminDeliveryReassignView,
 )
 from .asset_views import (
     AdminAssetListCreateView,
@@ -61,6 +62,7 @@ __all__ = [
     'AdminDeliveryPartnerEarningsCalculationView',
     'AdminDeliveryPartnerApprovalView',
     'AdminDeliveryPartnerTemporaryPasswordView',
+    'AdminDeliveryReassignView',
     'AdminAssetListCreateView',
     'AdminAssetDetailView',
 ]

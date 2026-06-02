@@ -6,6 +6,7 @@ from django.utils import timezone
 from django.utils.text import slugify
 
 from notifications.models import Notification
+from products.actions.approval import ProductApprovalPolicy
 from products.data.catalog_repository import (
     CatalogProductRepository,
     VendorCatalogGrantRepository,
@@ -274,6 +275,7 @@ class ReviewVendorProductAction:
         product.reviewed_by = admin_user
         product.reviewed_at = timezone.now()
         product.approval_change_summary = []
+        ProductApprovalPolicy.ensure_catalog_for_sellable_state(product)
         product.save(update_fields=["approval_status", "rejection_reason", "reviewed_by", "reviewed_at", "approval_change_summary"])
         return product
 

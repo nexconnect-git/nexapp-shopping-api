@@ -2,6 +2,7 @@ import uuid
 from django.db import models
 from django.db.models import Q
 from accounts.models import User, Address
+from products.models import CatalogProduct
 from helpers.upload_paths import UserDateUploadPath
 from products.models import Product
 from vendors.models import Vendor
@@ -112,8 +113,28 @@ class OrderItem(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items')
     product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True)
+    catalog_product = models.ForeignKey(
+        CatalogProduct,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='order_item_snapshots',
+    )
+    vendor = models.ForeignKey(
+        Vendor,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='order_item_snapshots',
+    )
     product_name = models.CharField(max_length=200)
+    product_brand = models.CharField(max_length=120, blank=True)
+    product_unit = models.CharField(max_length=20, blank=True)
+    product_pack_size = models.CharField(max_length=50, blank=True)
+    product_sku = models.CharField(max_length=50, blank=True)
+    product_slug = models.SlugField(blank=True)
     product_price = models.DecimalField(max_digits=10, decimal_places=2)
+    product_compare_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     quantity = models.PositiveIntegerField()
     subtotal = models.DecimalField(max_digits=10, decimal_places=2)
 

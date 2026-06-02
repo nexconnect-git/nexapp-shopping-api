@@ -6,6 +6,7 @@ from helpers.phone_helpers import normalize_phone
 from helpers.serializer_fields import SafeImageField
 from helpers.vendor_hours import get_vendor_availability, is_vendor_open_now
 from products.models import Product
+from products.data.product_repository import ProductRepository
 from products.serializers.category_serializers import CategorySerializer
 from vendors.models import Vendor, VENDOR_TYPE_CHOICES
 
@@ -142,10 +143,7 @@ class VendorListSerializer(serializers.ModelSerializer):
         if products is None:
             products = (
                 obj.products.filter(
-                    approval_status=Product.APPROVAL_STATUS_APPROVED,
-                    status="active",
-                    is_available=True,
-                    stock__gt=0,
+                    **ProductRepository.customer_visible_filter(),
                 )
                 .select_related("category", "catalog_product")
                 .prefetch_related("images", "catalog_product__images")

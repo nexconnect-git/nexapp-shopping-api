@@ -17,6 +17,8 @@ env/
 **/test/
 **/tests/
 **/test_*.py
+!backend/test_settings.py
+!backend/test_urls.py
 **/*_test.py
 **/*_tests.py
 **/*seed*
