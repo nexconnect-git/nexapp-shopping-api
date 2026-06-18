@@ -5,6 +5,20 @@ from vendors.actions.base import BaseAction
 from vendors.models import Vendor, VendorDocument, VendorOnboarding, VendorAuditLog
 from backend.events import vendor_approved
 
+VENDOR_REVIEW_STATUSES = {
+    "approved",
+    "rejected",
+    "hold",
+    "suspended",
+    "in_review",
+    "pending",
+    "pending_details",
+    "pending_documents",
+    "invalid_details",
+    "invalid_documents",
+}
+
+
 def _create_audit_log(vendor: Vendor, action: str, description: str, request=None, metadata=None) -> None:
     ip = None
     if request:
@@ -38,7 +52,8 @@ class ReviewVendorKycAction(BaseAction):
             onboarding.onboarding_status = "approved"
             onboarding.rejection_reason = ""
             vendor.status = "approved"
-            vendor.save(update_fields=["status"])
+            vendor.status_reason = ""
+            vendor.save(update_fields=["status", "status_reason"])
             _create_audit_log(vendor, "kyc_approved", "KYC verified and vendor account approved.", request)
             if old_status != "approved":
                 vendor_approved.send(sender=Vendor, vendor=vendor)
@@ -47,7 +62,8 @@ class ReviewVendorKycAction(BaseAction):
             onboarding.onboarding_status = "rejected"
             onboarding.rejection_reason = reason
             vendor.status = "rejected"
-            vendor.save(update_fields=["status"])
+            vendor.status_reason = reason
+            vendor.save(update_fields=["status", "status_reason"])
             _create_audit_log(vendor, "kyc_rejected", f"KYC rejected: {reason}", request)
 
         onboarding.reviewed_at = timezone.now()
@@ -59,21 +75,32 @@ class ReviewVendorKycAction(BaseAction):
 
 class UpdateVendorStatusAction(BaseAction):
     @transaction.atomic
-    def execute(self, vendor_id: str, new_status: str):
+    def execute(self, vendor_id: str, new_status: str, reason: str = "", request=None):
         try:
             vendor = Vendor.objects.get(pk=vendor_id)
         except Vendor.DoesNotExist:
             raise ValueError("Vendor not found.")
 
-        if new_status not in ["pending", "approved", "rejected", "suspended"]:
-            raise ValueError("status must be pending, approved, rejected, or suspended")
+        if new_status not in VENDOR_REVIEW_STATUSES:
+            raise ValueError("Invalid vendor status.")
+        if new_status != "approved" and not reason.strip():
+            raise ValueError("reason is required when status is not approved.")
 
         old_status = vendor.status
         vendor.status = new_status
-        vendor.save(update_fields=["status"])
+        vendor.status_reason = "" if new_status == "approved" else reason.strip()
+        vendor.save(update_fields=["status", "status_reason"])
 
         if new_status == "approved" and old_status != "approved":
             vendor_approved.send(sender=Vendor, vendor=vendor)
+
+        _create_audit_log(
+            vendor,
+            "status_changed",
+            f"Vendor status changed from {old_status} to {new_status}.",
+            request,
+            metadata={"old_status": old_status, "new_status": new_status, "reason": vendor.status_reason},
+        )
 
         return vendor
 

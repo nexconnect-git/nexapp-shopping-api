@@ -8,6 +8,14 @@ from helpers.validators import validate_image_upload
 User = get_user_model()
 
 
+def _role_for_serializer(serializer, default='customer') -> str:
+    instance = getattr(serializer, 'instance', None)
+    if instance is not None:
+        return getattr(instance, 'role', default) or default
+    initial_data = getattr(serializer, 'initial_data', {}) or {}
+    return initial_data.get('role') or default
+
+
 class UserRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
     role = serializers.ChoiceField(choices=User.ROLE_CHOICES, default='customer')
@@ -25,8 +33,9 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
     def validate_email(self, value: str) -> str:
         value = value.strip().lower()
-        if UserRepository.email_exists(value):
-            raise serializers.ValidationError("Email already exists.")
+        role = _role_for_serializer(self)
+        if UserRepository.email_exists(value, role=role):
+            raise serializers.ValidationError(f"Email already exists for a {role} account.")
         return value
 
     def validate_phone(self, value: str) -> str:
@@ -36,8 +45,9 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             phone = normalize_phone(value)
         except ValueError as exc:
             raise serializers.ValidationError(str(exc)) from exc
-        if UserRepository.phone_exists(phone):
-            raise serializers.ValidationError("Phone number already exists.")
+        role = _role_for_serializer(self)
+        if UserRepository.phone_exists(phone, role=role):
+            raise serializers.ValidationError(f"Phone number already exists for a {role} account.")
         return phone
 
     def create(self, validated_data):
@@ -85,6 +95,29 @@ class UserProfileSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(str(exc)) from exc
         return value
 
+    def validate_email(self, value: str) -> str:
+        value = value.strip().lower()
+        if not value:
+            return value
+        role = _role_for_serializer(self)
+        exclude_user_id = getattr(getattr(self, 'instance', None), 'id', None)
+        if UserRepository.email_exists(value, exclude_user_id=exclude_user_id, role=role):
+            raise serializers.ValidationError(f"Email already exists for a {role} account.")
+        return value
+
+    def validate_phone(self, value: str) -> str:
+        if not value:
+            return ''
+        try:
+            phone = normalize_phone(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+        role = _role_for_serializer(self)
+        exclude_user_id = getattr(getattr(self, 'instance', None), 'id', None)
+        if UserRepository.phone_exists(phone, exclude_user_id=exclude_user_id, role=role):
+            raise serializers.ValidationError(f"Phone number already exists for a {role} account.")
+        return phone
+
 
 class ChangePasswordSerializer(serializers.Serializer):
     current_password = serializers.CharField(write_only=True)
@@ -107,6 +140,32 @@ class AdminUserUpdateSerializer(serializers.ModelSerializer):
             'is_verified',
             'is_active',
         ]
+
+    def validate_username(self, value: str) -> str:
+        value = value.strip()
+        exclude_user_id = getattr(getattr(self, 'instance', None), 'id', None)
+        if UserRepository.username_exists(value, exclude_user_id=exclude_user_id):
+            raise serializers.ValidationError("Username already exists.")
+        return value
+
+    def validate_email(self, value: str) -> str:
+        value = value.strip().lower()
+        exclude_user_id = getattr(getattr(self, 'instance', None), 'id', None)
+        if UserRepository.email_exists(value, exclude_user_id=exclude_user_id, role='admin'):
+            raise serializers.ValidationError("Email already exists for an admin account.")
+        return value
+
+    def validate_phone(self, value: str) -> str:
+        if not value:
+            return ''
+        try:
+            phone = normalize_phone(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+        exclude_user_id = getattr(getattr(self, 'instance', None), 'id', None)
+        if UserRepository.phone_exists(phone, exclude_user_id=exclude_user_id, role='admin'):
+            raise serializers.ValidationError("Phone number already exists for an admin account.")
+        return phone
 
 
 class AdminUserSerializer(serializers.ModelSerializer):
@@ -136,9 +195,20 @@ class AdminUserSerializer(serializers.ModelSerializer):
 
     def validate_email(self, value: str) -> str:
         value = value.strip().lower()
-        if UserRepository.email_exists(value):
-            raise serializers.ValidationError("Email already exists.")
+        if UserRepository.email_exists(value, role='admin'):
+            raise serializers.ValidationError("Email already exists for an admin account.")
         return value
+
+    def validate_phone(self, value: str) -> str:
+        if not value:
+            return ''
+        try:
+            phone = normalize_phone(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+        if UserRepository.phone_exists(phone, role='admin'):
+            raise serializers.ValidationError("Phone number already exists for an admin account.")
+        return phone
 
     def create(self, validated_data):
         password = validated_data.pop('password')

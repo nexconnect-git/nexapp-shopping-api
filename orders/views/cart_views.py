@@ -46,7 +46,7 @@ class AddToCartView(APIView):
             if existing_vendor_id != str(product.vendor_id):
                 return Response(
                     {
-                        "error": f"Your cart has items from {existing_item.product.vendor.store_name}. Do you want to clear the cart and add items from {product.vendor.store_name}?",
+                        "error": f"Your basket has items from {existing_item.product.vendor.store_name}. To order from {product.vendor.store_name}, replace basket?",
                         "code": "cart_store_conflict",
                         "existing_store_id": existing_vendor_id,
                         "existing_store_name": existing_item.product.vendor.store_name,

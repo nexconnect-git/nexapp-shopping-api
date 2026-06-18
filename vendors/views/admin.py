@@ -8,10 +8,13 @@ from datetime import timedelta
 from django.db.models import Sum, Count, Q
 
 from accounts.permissions import IsAdminRole
-from vendors.actions import SendVendorWelcomeEmailAction, UpdateVendorStatusAction
+from vendors.actions import SendVendorWelcomeEmailAction, UpdateVendorStatusAction, VerifyVendorDocumentAction
+from vendors.actions.admin import VENDOR_REVIEW_STATUSES
 from vendors.serializers.admin import AdminVendorSerializer, VendorFullOnboardSerializer
+from vendors.serializers.onboarding import DocumentVerifySerializer, VendorDocumentSerializer
 from vendors.serializers.public import VendorRegistrationSerializer
 from vendors.data import VendorRepository
+from vendors.models import VendorDocument
 
 class AdminVendorOnboardView(APIView):
     """POST /api/admin/vendors/onboard/ — Create a full vendor account via Admin"""
@@ -23,7 +26,7 @@ class AdminVendorOnboardView(APIView):
         vendor = serializer.save()
         
         # We attach the auto-generated password if one was produced
-        response_data = AdminVendorSerializer(vendor).data
+        response_data = AdminVendorSerializer(vendor, context={'request': request}).data
         if hasattr(vendor, 'auto_generated_password'):
             response_data['temporary_password'] = vendor.auto_generated_password
         SendVendorWelcomeEmailAction().execute(vendor)
@@ -42,14 +45,19 @@ class AdminVendorListView(APIView):
         paginator = PageNumberPagination()
         paginator.page_size = 20
         page = paginator.paginate_queryset(qs, request)
-        return paginator.get_paginated_response(AdminVendorSerializer(page, many=True).data)
+        return paginator.get_paginated_response(
+            AdminVendorSerializer(page, many=True, context={'request': request}).data
+        )
 
     def post(self, request):
         serializer = VendorRegistrationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         vendor = serializer.save()
         SendVendorWelcomeEmailAction().execute(vendor)
-        return Response(AdminVendorSerializer(vendor).data, status=status.HTTP_201_CREATED)
+        return Response(
+            AdminVendorSerializer(vendor, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 class AdminVendorDetailView(APIView):
     permission_classes = [IsAuthenticated, IsAdminRole]
@@ -58,7 +66,7 @@ class AdminVendorDetailView(APIView):
         vendor = VendorRepository().get_by_id(pk)
         if not vendor:
             return Response({"error": "Vendor not found."}, status=status.HTTP_404_NOT_FOUND)
-        return Response(AdminVendorSerializer(vendor).data)
+        return Response(AdminVendorSerializer(vendor, context={'request': request}).data)
 
     def patch(self, request, pk):
         vendor = VendorRepository().get_by_id(pk)
@@ -75,20 +83,65 @@ class AdminVendorStatusView(APIView):
     """POST /api/admin/vendors/<pk>/status/ — approve, reject, or suspend a vendor."""
     permission_classes = [IsAuthenticated, IsAdminRole]
 
-    ALLOWED_STATUSES = {'approved', 'rejected', 'suspended', 'pending'}
+    ALLOWED_STATUSES = VENDOR_REVIEW_STATUSES
 
     def post(self, request, pk):
         new_status = request.data.get('status')
         if new_status not in self.ALLOWED_STATUSES:
             return Response(
-                {"error": f"Invalid status. Must be one of: {', '.join(self.ALLOWED_STATUSES)}"},
+                {"error": f"Invalid status. Must be one of: {', '.join(sorted(self.ALLOWED_STATUSES))}"},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        reason = request.data.get('reason') or request.data.get('status_reason') or ""
         try:
-            vendor = UpdateVendorStatusAction().execute(pk, new_status)
+            vendor = UpdateVendorStatusAction().execute(pk, new_status, reason, request=request)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(AdminVendorSerializer(vendor, context={'request': request}).data)
+
+
+class AdminVendorDocumentListCreateView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    def get(self, request, pk):
+        vendor = VendorRepository().get_by_id(pk)
+        if not vendor:
+            return Response({"error": "Vendor not found."}, status=status.HTTP_404_NOT_FOUND)
+        documents = VendorDocument.objects.filter(vendor=vendor)
+        serializer = VendorDocumentSerializer(documents, many=True, context={"request": request})
+        return Response(serializer.data)
+
+    def post(self, request, pk):
+        vendor = VendorRepository().get_by_id(pk)
+        if not vendor:
+            return Response({"error": "Vendor not found."}, status=status.HTTP_404_NOT_FOUND)
+        serializer = VendorDocumentSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        document = serializer.save(vendor=vendor)
+        return Response(
+            VendorDocumentSerializer(document, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class AdminVendorDocumentVerifyView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    def post(self, request, pk, doc_id):
+        serializer = DocumentVerifySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            document = VerifyVendorDocumentAction().execute(
+                str(pk),
+                str(doc_id),
+                serializer.validated_data["action"],
+                serializer.validated_data.get("rejection_reason", ""),
+                request.user,
+                request=request,
+            )
         except ValueError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_404_NOT_FOUND)
-        return Response(AdminVendorSerializer(vendor).data)
+        return Response(VendorDocumentSerializer(document, context={"request": request}).data)
 
 
 class AdminVendorSalesReportView(APIView):

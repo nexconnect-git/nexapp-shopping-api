@@ -5,10 +5,7 @@ Each action class encapsulates one business operation; views call actions,
 not the ORM directly.
 """
 
-from django.utils import timezone
-
 from support.data import SupportTicketRepository
-from support.helpers import validate_category, validate_priority, validate_status
 from support.models import SupportTicket
 from support.services import TicketNotificationService
 
@@ -29,7 +26,24 @@ class CreateTicketAction:
         Returns:
             The newly created SupportTicket.
         """
-        return SupportTicketRepository.create(vendor=vendor, **validated_data)
+        return self.repo.create(vendor=vendor, **validated_data)
+
+
+class AdminRespondToTicketAction:
+    """Record an admin response and notify the ticket's vendor."""
+
+    def __init__(self, repository: SupportTicketRepository = None):
+        self.repo = repository or SupportTicketRepository()
+
+    def execute(self, ticket: SupportTicket, admin_user, response_text: str, new_status: str) -> SupportTicket:
+        updated = self.repo.respond(
+            ticket,
+            admin_response=response_text,
+            status=new_status,
+            responded_by=admin_user,
+        )
+        TicketNotificationService.notify_vendor_response(updated)
+        return updated
 
 
 class RespondToTicketAction:
@@ -52,7 +66,6 @@ class RespondToTicketAction:
             ticket,
             message=message,
             status='in_progress',
-            updated_at=timezone.now(),
         )
 
 

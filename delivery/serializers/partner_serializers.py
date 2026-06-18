@@ -6,13 +6,14 @@ from accounts.data.user_repository import UserRepository
 from helpers.media_helpers import safe_media_url
 from delivery.models import DeliveryPartner
 from helpers.phone_helpers import normalize_phone
-from helpers.serializer_fields import SafeImageField
+from helpers.serializer_fields import SafeFileField
+from helpers.validators import validate_document_upload
 
 User = get_user_model()
 
 
 class DeliveryPartnerSerializer(serializers.ModelSerializer):
-    id_proof = SafeImageField(required=False, allow_null=True)
+    id_proof = SafeFileField(required=False, allow_null=True)
     user = serializers.SerializerMethodField()
 
     class Meta:
@@ -56,11 +57,34 @@ class DeliveryPartnerSerializer(serializers.ModelSerializer):
             data['temp_password'] = obj.user.temp_password
         return data
 
+    def validate_id_proof(self, value):
+        if value:
+            try:
+                validate_document_upload(value, label="delivery partner ID proof")
+            except ValueError as exc:
+                raise serializers.ValidationError(str(exc)) from exc
+        return value
+
     def update(self, instance, validated_data):
         """Forward admin-edit user fields from request data to the related User model."""
         request = self.context.get('request')
         if request:
             user_updated = []
+            if 'username' in request.data:
+                username = str(request.data['username']).strip()
+                if UserRepository.username_exists(username, exclude_user_id=instance.user_id):
+                    raise serializers.ValidationError({'username': 'Username already exists.'})
+            if 'email' in request.data:
+                email = str(request.data['email']).strip().lower()
+                if UserRepository.email_exists(email, exclude_user_id=instance.user_id, role='delivery'):
+                    raise serializers.ValidationError({'email': 'Email already exists for a delivery account.'})
+            if 'phone' in request.data:
+                try:
+                    phone = normalize_phone(str(request.data['phone']))
+                except ValueError as exc:
+                    raise serializers.ValidationError({'phone': str(exc)}) from exc
+                if UserRepository.phone_exists(phone, exclude_user_id=instance.user_id, role='delivery'):
+                    raise serializers.ValidationError({'phone': 'Phone number already exists for a delivery account.'})
             if 'user_is_active' in request.data:
                 val = request.data['user_is_active']
                 if isinstance(val, str):
@@ -69,7 +93,8 @@ class DeliveryPartnerSerializer(serializers.ModelSerializer):
                 user_updated.append('is_active')
             for field in ['username', 'first_name', 'last_name', 'email', 'phone', 'country', 'currency']:
                 if field in request.data:
-                    setattr(instance.user, field, request.data[field])
+                    value = phone if field == 'phone' and 'phone' in request.data else request.data[field]
+                    setattr(instance.user, field, value)
                     user_updated.append(field)
             if user_updated:
                 instance.user.save(update_fields=list(set(user_updated)))
@@ -88,6 +113,7 @@ class DeliveryPartnerRegistrationSerializer(serializers.Serializer):
     vehicle_type = serializers.ChoiceField(choices=DeliveryPartner.VEHICLE_CHOICES)
     vehicle_number = serializers.CharField(max_length=20, required=False, default='')
     license_number = serializers.CharField(max_length=50)
+    id_proof = serializers.FileField(required=False, allow_null=True)
 
     def validate_username(self, value):
         value = value.strip()
@@ -97,8 +123,8 @@ class DeliveryPartnerRegistrationSerializer(serializers.Serializer):
 
     def validate_email(self, value):
         value = value.strip().lower()
-        if UserRepository.email_exists(value):
-            raise serializers.ValidationError("Email already exists.")
+        if UserRepository.email_exists(value, role='delivery'):
+            raise serializers.ValidationError("Email already exists for a delivery account.")
         return value
 
     def validate_phone(self, value):
@@ -108,9 +134,18 @@ class DeliveryPartnerRegistrationSerializer(serializers.Serializer):
             phone = normalize_phone(value)
         except ValueError as exc:
             raise serializers.ValidationError(str(exc)) from exc
-        if UserRepository.phone_exists(phone):
-            raise serializers.ValidationError("Phone number already exists.")
+        if UserRepository.phone_exists(phone, role='delivery'):
+            raise serializers.ValidationError("Phone number already exists for a delivery account.")
         return phone
+
+    def validate_id_proof(self, value):
+        if not value:
+            return value
+        try:
+            validate_document_upload(value, label="delivery partner ID proof")
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+        return value
 
     def create(self, validated_data):
         password = validated_data.get('password')
@@ -139,6 +174,7 @@ class DeliveryPartnerRegistrationSerializer(serializers.Serializer):
             vehicle_type=validated_data['vehicle_type'],
             vehicle_number=validated_data.get('vehicle_number', ''),
             license_number=validated_data['license_number'],
+            id_proof=validated_data.get('id_proof'),
         )
         if auto_generated_password:
             partner.auto_generated_password = auto_generated_password

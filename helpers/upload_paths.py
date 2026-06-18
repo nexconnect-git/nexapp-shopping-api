@@ -1,4 +1,5 @@
 from pathlib import Path
+from uuid import uuid4
 
 from django.utils import timezone
 from django.utils.deconstruct import deconstructible
@@ -61,6 +62,21 @@ def build_upload_path(instance, filename, use_of_image):
     return f'{username}/{date_segment}/{use_segment}/{filename}'
 
 
+def _private_document_filename(filename, prefix=''):
+    suffix = Path(get_valid_filename(Path(filename).name)).suffix.lower()
+    prefix_segment = clean_path_segment(prefix, '')
+    if prefix_segment:
+        return f'{prefix_segment}-{uuid4().hex}{suffix}'
+    return f'{uuid4().hex}{suffix}'
+
+
+def _instance_id_segment(instance, attr, fallback):
+    value = _get_nested_attr(instance, attr)
+    if value:
+        return get_valid_filename(str(value).strip()) or fallback
+    return fallback
+
+
 @deconstructible
 class UserDateUploadPath:
     def __init__(self, use_of_image):
@@ -68,3 +84,28 @@ class UserDateUploadPath:
 
     def __call__(self, instance, filename):
         return build_upload_path(instance, filename, self.use_of_image)
+
+
+@deconstructible
+class VendorDocumentUploadPath:
+    def __call__(self, instance, filename):
+        vendor_id = _instance_id_segment(instance, 'vendor.id', 'unassigned_vendor')
+        document_type = clean_path_segment(getattr(instance, 'document_type', ''), 'document')
+        return (
+            f'vendors/{vendor_id}/documents/license/'
+            f'{_private_document_filename(filename, document_type)}'
+        )
+
+
+@deconstructible
+class DeliveryPartnerDocumentUploadPath:
+    def __init__(self, document_type='id_proof'):
+        self.document_type = document_type
+
+    def __call__(self, instance, filename):
+        partner_id = _instance_id_segment(instance, 'id', 'unassigned_partner')
+        document_type = clean_path_segment(self.document_type, 'document')
+        return (
+            f'delivery_partners/{partner_id}/documents/license/'
+            f'{_private_document_filename(filename, document_type)}'
+        )

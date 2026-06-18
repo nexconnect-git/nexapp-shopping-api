@@ -41,7 +41,13 @@ class Vendor(models.Model):
         ('pending',   'Pending Approval'),
         ('approved',  'Approved'),
         ('rejected',  'Rejected'),
+        ('hold',      'Hold'),
         ('suspended', 'Suspended'),
+        ('in_review', 'In Review'),
+        ('pending_details', 'Pending Details'),
+        ('pending_documents', 'Pending Documents'),
+        ('invalid_details', 'Invalid Details'),
+        ('invalid_documents', 'Invalid Documents'),
     )
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='vendor_profile')
@@ -66,6 +72,7 @@ class Vendor(models.Model):
 
     # ── Approval / ratings ────────────────────────────────────────────────────
     status         = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    status_reason  = models.TextField(blank=True, default='')
     is_featured    = models.BooleanField(default=False)
     average_rating = models.DecimalField(max_digits=3, decimal_places=2, default=0)
     total_ratings  = models.IntegerField(default=0)

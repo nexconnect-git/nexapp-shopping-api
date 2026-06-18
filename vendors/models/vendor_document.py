@@ -1,10 +1,11 @@
 import uuid
 from django.db import models
 from accounts.models import User
-from helpers.upload_paths import UserDateUploadPath
+from helpers.upload_paths import VendorDocumentUploadPath
 from vendors.models.vendor import Vendor
 
 DOCUMENT_TYPE_CHOICES = (
+    ('license',              'Business / Trade License'),
     ('pan_card',             'PAN Card'),
     ('gstin_certificate',    'GSTIN Certificate'),
     ('identity_proof',       'Identity Proof (Aadhaar / Passport)'),
@@ -26,7 +27,7 @@ class VendorDocument(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     vendor            = models.ForeignKey(Vendor, on_delete=models.CASCADE, related_name='documents')
     document_type     = models.CharField(max_length=30, choices=DOCUMENT_TYPE_CHOICES)
-    file              = models.FileField(upload_to=UserDateUploadPath('vendor_document'))
+    file              = models.FileField(upload_to=VendorDocumentUploadPath())
     original_filename = models.CharField(max_length=255, blank=True)
     file_size_bytes   = models.IntegerField(default=0)
     status            = models.CharField(max_length=20, choices=DOCUMENT_STATUS_CHOICES, default='pending')

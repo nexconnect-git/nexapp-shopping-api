@@ -1,7 +1,7 @@
-from vendors.views.public import (
-    VendorRegistrationView, VendorIdentityAvailabilityView, VendorListView, VendorDetailView,
-    NearbyVendorsView, VendorRecommendationsView
-)
+from vendors.views.detail_public_views import VendorDetailView
+from vendors.views.discovery_views import NearbyVendorsView, VendorListView
+from vendors.views.onboarding_public_views import VendorIdentityAvailabilityView, VendorRegistrationView
+from vendors.views.recommendation_views import VendorRecommendationsView
 from vendors.views.vendor import (
     VendorProfileView, VendorStoreSettingsView, VendorDashboardView, VendorOperationsSummaryView, VendorAnalyticsView, SetStoreStatusView, BulkUpdateStockView, VendorProductViewSet
 )
@@ -17,6 +17,8 @@ from vendors.views.admin import (
     AdminVendorSalesReportView,
     AdminVendorOnboardView,
     AdminVendorStatusView,
+    AdminVendorDocumentListCreateView,
+    AdminVendorDocumentVerifyView,
 )
 from vendors.views.payouts_and_misc import (
     VendorPayoutListView, VendorPayoutApproveView, VendorPayoutDeclineView,
@@ -82,6 +84,8 @@ __all__ = [
     'AdminVendorSalesReportView',
     'AdminVendorOnboardView',
     'AdminVendorStatusView',
+    'AdminVendorDocumentListCreateView',
+    'AdminVendorDocumentVerifyView',
     'AdminVendorPayoutListView',
     'AdminVendorPayoutDetailView',
     'AdminVendorPayoutScheduleView',

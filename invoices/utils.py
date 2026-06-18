@@ -2,12 +2,11 @@ import io
 from django.core.files.base import ContentFile
 from django.template.loader import get_template
 from xhtml2pdf import pisa
-from .models import Invoice
+from invoices.data import InvoiceRepository
 
 def generate_pdf_invoice(invoice_id):
-    try:
-        invoice = Invoice.objects.get(id=invoice_id)
-    except Invoice.DoesNotExist:
+    invoice = InvoiceRepository.get_by_id(invoice_id)
+    if not invoice:
         return None
 
     # Context for the template

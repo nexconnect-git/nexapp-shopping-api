@@ -13,7 +13,7 @@ from orders.models import Coupon
 from orders.serializers import CouponSerializer
 from vendors.models import Vendor, VendorPayout, VendorReview
 from vendors.serializers import VendorPayoutSerializer, VendorReviewSerializer
-from vendors.views.public import StandardPagination
+from vendors.helpers.public_vendor_helpers import StandardPagination
 
 class VendorPayoutListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated, IsApprovedVendor]

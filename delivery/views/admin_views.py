@@ -49,10 +49,10 @@ class AdminDeliveryPartnerListView(APIView):
         return paginator.get_paginated_response(DeliveryPartnerSerializer(page, many=True).data)
 
     def post(self, request):
-        serializer = DeliveryPartnerRegistrationSerializer(data=request.data)
+        serializer = DeliveryPartnerRegistrationSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         partner = serializer.save()
-        data = DeliveryPartnerSerializer(partner).data
+        data = DeliveryPartnerSerializer(partner, context={"request": request}).data
         temporary_password = (
             getattr(partner, "auto_generated_password", "")
             or data.get("user", {}).get("temp_password", "")

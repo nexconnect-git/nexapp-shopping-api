@@ -4,17 +4,19 @@ from rest_framework import generics, status, viewsets
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from backend.utils import haversine
+from helpers.geo_helpers import haversine
+from delivery.data.assignment_repo import DeliveryAssignmentRepository
+from delivery.data.partner_repo import DeliveryPartnerRepository
 from delivery.models import DeliveryAssignment, DeliveryEarning, DeliveryReview
+from delivery.permissions import IsApprovedDeliveryPartner
 from delivery.serializers import (
     DeliveryEarningSerializer,
     DeliveryReviewSerializer,
     UpdateLocationSerializer,
 )
-from delivery.tasks import search_and_notify_partners
+from delivery.tasks import check_assignment_timeout, check_stale_assignments, search_and_notify_partners
 from orders.models import Order
 from orders.serializers import OrderSerializer
-from delivery.data.partner_repo import DeliveryPartnerRepository
 from orders.data.order_repo import OrderRepository
 from delivery.actions.partner_actions import UpdateLocationAction
 
@@ -33,7 +35,25 @@ class DeliveryDashboardView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        partner = request.user.delivery_profile
+        partner = getattr(request.user, "delivery_profile", None)
+        if not partner:
+            return Response(
+                {"error": "Delivery partner profile not found."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if not partner.is_approved:
+            return Response(
+                {
+                    "is_approved": False,
+                    "partner_status": partner.status,
+                    "total_deliveries": partner.total_deliveries,
+                    "total_earnings": str(partner.total_earnings),
+                    "average_rating": str(partner.average_rating),
+                    "active_orders": [],
+                }
+            )
+
         base_qs = OrderRepository.get_base_queryset()
         active_orders = base_qs.filter(
             delivery_partner=request.user,
@@ -45,12 +65,13 @@ class DeliveryDashboardView(APIView):
                 "average_rating": str(partner.average_rating),
                 "active_orders": OrderSerializer(active_orders, many=True).data,
                 "partner_status": partner.status,
+                "is_approved": partner.is_approved,
             }
         )
 
 
 class AvailableOrdersView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsApprovedDeliveryPartner]
 
     def get(self, request):
         # Legacy fallback view: Maps exactly to PendingAssignmentRequestsView logic
@@ -58,9 +79,6 @@ class AvailableOrdersView(APIView):
         partner = request.user.delivery_profile
         
         # Enforce exactly the 1-minute timeout queue logic
-        from delivery.data.assignment_repo import DeliveryAssignmentRepository
-        from delivery.tasks import check_assignment_timeout, check_stale_assignments
-        
         expired_assignments = DeliveryAssignmentRepository.get_expired_for_partner(partner, minutes_old=1)
         for assignment in expired_assignments:
             check_assignment_timeout(str(assignment.id))
@@ -94,7 +112,7 @@ class AvailableOrdersView(APIView):
 
 
 class UpdateLocationView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsApprovedDeliveryPartner]
 
     def post(self, request):
         serializer = UpdateLocationSerializer(data=request.data)
@@ -111,7 +129,7 @@ class UpdateLocationView(APIView):
 
 
 class SetAvailabilityView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsApprovedDeliveryPartner]
 
     def post(self, request):
         partner = request.user.delivery_profile
@@ -129,7 +147,7 @@ class SetAvailabilityView(APIView):
 
 
 class DeliveryHistoryView(generics.ListAPIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsApprovedDeliveryPartner]
     serializer_class = OrderSerializer
 
     def get_queryset(self):
@@ -152,14 +170,14 @@ class DeliveryHistoryView(generics.ListAPIView):
 
 
 class DeliveryEarningsView(generics.ListAPIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsApprovedDeliveryPartner]
     serializer_class = DeliveryEarningSerializer
 
     def get_queryset(self):
         return DeliveryEarning.objects.filter(delivery_partner=self.request.user.delivery_profile)
 
 
-class DeliveryReviewViewSet(viewsets.ModelViewSet):
+class DeliveryReviewViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = DeliveryReviewSerializer
     permission_classes = [IsAuthenticated]
 
@@ -182,6 +200,3 @@ class DeliveryReviewViewSet(viewsets.ModelViewSet):
             return queryset.filter(delivery_partner_id=own_partner_id)
 
         return queryset.none()
-
-    def perform_create(self, serializer):
-        serializer.save(customer=self.request.user)

@@ -11,7 +11,7 @@ from products.actions import UpdateVendorProductAction
 from products.serializers import ProductSerializer, ProductCreateUpdateSerializer
 from products.models import Product
 from orders.serializers import OrderSerializer
-from vendors.views.public import StandardPagination
+from vendors.helpers.public_vendor_helpers import StandardPagination
 
 class VendorProfileView(APIView):
     permission_classes = [IsAuthenticated, IsVendor]

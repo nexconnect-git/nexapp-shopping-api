@@ -3,6 +3,9 @@ Repository layer for SupportTicket — all ORM queries live here.
 """
 
 from typing import Optional
+
+from django.utils import timezone
+
 from support.models import SupportTicket
 
 
@@ -72,6 +75,15 @@ class SupportTicketRepository:
         """Apply *fields* to *ticket*, save, and return the updated instance."""
         for attr, value in fields.items():
             setattr(ticket, attr, value)
+        ticket.save()
+        return ticket
+
+    @staticmethod
+    def respond(ticket: SupportTicket, admin_response: str, status: str, responded_by) -> SupportTicket:
+        ticket.admin_response = admin_response
+        ticket.status = status
+        ticket.responded_by = responded_by
+        ticket.responded_at = timezone.now()
         ticket.save()
         return ticket
 

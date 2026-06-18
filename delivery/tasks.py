@@ -12,7 +12,7 @@ import django_rq
 from django_rq import job
 from django.utils import timezone
 
-from backend.utils import haversine
+from helpers.geo_helpers import haversine
 from delivery.models import DeliveryAssignment, DeliveryPartner
 from notifications.fcm import send_push
 from notifications.models import Notification

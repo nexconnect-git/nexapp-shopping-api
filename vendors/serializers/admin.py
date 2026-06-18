@@ -6,21 +6,94 @@ from django.utils import timezone
 from rest_framework import serializers
 from accounts.data.user_repository import UserRepository
 from helpers.phone_helpers import normalize_phone
-from helpers.validators import validate_pan, validate_ifsc, validate_gstin
-from vendors.models import Vendor, VendorOnboarding, VendorBankDetails, VendorServiceableArea, VendorHoliday, VendorAuditLog, VENDOR_TYPE_CHOICES
-from .public import VendorSerializer
+from helpers.validators import validate_document_upload, validate_pan, validate_ifsc, validate_gstin
+from vendors.models import (
+    Vendor,
+    VendorAuditLog,
+    VendorBankDetails,
+    VendorDocument,
+    VendorHoliday,
+    VendorOnboarding,
+    VendorServiceableArea,
+    VENDOR_TYPE_CHOICES,
+)
+from vendors.serializers.onboarding import VendorDocumentSerializer
+from vendors.serializers.public import VendorSerializer
 
 User = get_user_model()
 
+VENDOR_ONBOARD_DOCUMENT_FIELDS = {
+    "license_document": "license",
+    "pan_card_document": "pan_card",
+    "gstin_certificate_document": "gstin_certificate",
+    "identity_proof_document": "identity_proof",
+    "address_proof_document": "address_proof",
+    "cancelled_cheque_document": "cancelled_cheque",
+    "fssai_license_document": "fssai_license",
+    "business_registration_document": "business_registration",
+    "trademark_document": "trademark",
+}
+
 class AdminVendorSerializer(VendorSerializer):
+    documents = serializers.SerializerMethodField(read_only=True)
+    license_document = serializers.FileField(write_only=True, required=False, allow_null=True)
+    pan_card_document = serializers.FileField(write_only=True, required=False, allow_null=True)
+    gstin_certificate_document = serializers.FileField(write_only=True, required=False, allow_null=True)
+    identity_proof_document = serializers.FileField(write_only=True, required=False, allow_null=True)
+    address_proof_document = serializers.FileField(write_only=True, required=False, allow_null=True)
+    cancelled_cheque_document = serializers.FileField(write_only=True, required=False, allow_null=True)
+    fssai_license_document = serializers.FileField(write_only=True, required=False, allow_null=True)
+    business_registration_document = serializers.FileField(write_only=True, required=False, allow_null=True)
+    trademark_document = serializers.FileField(write_only=True, required=False, allow_null=True)
+
     class Meta(VendorSerializer.Meta):
-        read_only_fields = ["id", "average_rating", "total_ratings", "created_at", "updated_at"]
+        fields = VendorSerializer.Meta.fields + ["documents"] + list(VENDOR_ONBOARD_DOCUMENT_FIELDS.keys())
+        read_only_fields = [
+            "id", "status", "status_reason", "average_rating", "total_ratings",
+            "created_at", "updated_at",
+        ]
+
+    def get_documents(self, obj):
+        documents = obj.documents.all().order_by("-uploaded_at")
+        return VendorDocumentSerializer(documents, many=True, context=self.context).data
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        for field_name in VENDOR_ONBOARD_DOCUMENT_FIELDS:
+            file_obj = attrs.get(field_name)
+            if not file_obj:
+                continue
+            label = field_name.replace("_", " ").replace("document", "file").strip()
+            try:
+                validate_document_upload(file_obj, label=label)
+            except ValueError as exc:
+                raise serializers.ValidationError({field_name: str(exc)}) from exc
+        return attrs
 
     def update(self, instance, validated_data):
+        document_uploads = {
+            document_type: validated_data.pop(field_name, None)
+            for field_name, document_type in VENDOR_ONBOARD_DOCUMENT_FIELDS.items()
+        }
         request = self.context.get('request')
         user_fields = ['username', 'first_name', 'last_name', 'country', 'currency']
         if request:
             user_updated = []
+            if 'username' in request.data:
+                username = str(request.data['username']).strip()
+                if UserRepository.username_exists(username, exclude_user_id=instance.user_id):
+                    raise serializers.ValidationError({'username': 'Username already exists.'})
+            if 'email' in request.data:
+                email = str(request.data['email']).strip().lower()
+                if UserRepository.email_exists(email, exclude_user_id=instance.user_id, role='vendor'):
+                    raise serializers.ValidationError({'email': 'Email already exists for a vendor account.'})
+            if 'phone' in request.data:
+                try:
+                    phone = normalize_phone(str(request.data['phone']))
+                except ValueError as exc:
+                    raise serializers.ValidationError({'phone': str(exc)}) from exc
+                if UserRepository.phone_exists(phone, exclude_user_id=instance.user_id, role='vendor'):
+                    raise serializers.ValidationError({'phone': 'Phone number already exists for a vendor account.'})
             for field in user_fields:
                 if field in request.data:
                     setattr(instance.user, field, request.data[field])
@@ -29,15 +102,42 @@ class AdminVendorSerializer(VendorSerializer):
                 instance.user.email = request.data['email']
                 user_updated.append('email')
             if 'phone' in request.data:
-                instance.user.phone = request.data['phone']
+                instance.user.phone = normalize_phone(str(request.data['phone']))
                 user_updated.append('phone')
             if user_updated:
                 instance.user.save(update_fields=list(set(user_updated)))
-        return super().update(instance, validated_data)
+        vendor = super().update(instance, validated_data)
+        uploaded_documents = []
+        for document_type, file_obj in document_uploads.items():
+            if not file_obj:
+                continue
+            uploaded_documents.append(
+                VendorDocument.objects.create(
+                    vendor=vendor,
+                    document_type=document_type,
+                    file=file_obj,
+                    original_filename=file_obj.name,
+                    file_size_bytes=file_obj.size,
+                )
+            )
+        if uploaded_documents:
+            VendorAuditLog.objects.create(
+                vendor=vendor,
+                action="document_uploaded",
+                description="Vendor documents uploaded by admin during profile edit.",
+                performed_by=request.user if request else None,
+            )
+        return vendor
 
 
 class JSONListField(serializers.ListField):
     def to_internal_value(self, data):
+        if (
+            isinstance(data, list)
+            and len(data) == 1
+            and isinstance(data[0], str)
+        ):
+            data = data[0]
         if isinstance(data, str):
             if not data.strip():
                 data = []
@@ -87,6 +187,15 @@ class VendorFullOnboardSerializer(serializers.Serializer):
     fssai_license = serializers.CharField(max_length=50, required=False, default="", allow_blank=True)
     trademark_number = serializers.CharField(max_length=50, required=False, default="", allow_blank=True)
     business_addresses = JSONListField(child=serializers.DictField(), required=False, default=list)
+    license_document = serializers.FileField(write_only=True, required=False, allow_null=True)
+    pan_card_document = serializers.FileField(write_only=True, required=False, allow_null=True)
+    gstin_certificate_document = serializers.FileField(write_only=True, required=False, allow_null=True)
+    identity_proof_document = serializers.FileField(write_only=True, required=False, allow_null=True)
+    address_proof_document = serializers.FileField(write_only=True, required=False, allow_null=True)
+    cancelled_cheque_document = serializers.FileField(write_only=True, required=False, allow_null=True)
+    fssai_license_document = serializers.FileField(write_only=True, required=False, allow_null=True)
+    business_registration_document = serializers.FileField(write_only=True, required=False, allow_null=True)
+    trademark_document = serializers.FileField(write_only=True, required=False, allow_null=True)
     
     # Step 4
     account_holder_name = serializers.CharField(required=False, default="", allow_blank=True)
@@ -126,8 +235,8 @@ class VendorFullOnboardSerializer(serializers.Serializer):
 
     def validate_email(self, value):
         value = value.strip().lower()
-        if UserRepository.email_exists(value):
-            raise serializers.ValidationError("Email already exists.")
+        if UserRepository.email_exists(value, role="vendor"):
+            raise serializers.ValidationError("Email already exists for a vendor account.")
         return value
 
     def validate_phone(self, value):
@@ -135,11 +244,27 @@ class VendorFullOnboardSerializer(serializers.Serializer):
             phone = normalize_phone(value)
         except ValueError as exc:
             raise serializers.ValidationError(str(exc)) from exc
-        if UserRepository.phone_exists(phone):
-            raise serializers.ValidationError("Phone number already exists.")
+        if UserRepository.phone_exists(phone, role="vendor"):
+            raise serializers.ValidationError("Phone number already exists for a vendor account.")
         return phone
 
+    def validate(self, attrs):
+        for field_name in VENDOR_ONBOARD_DOCUMENT_FIELDS:
+            file_obj = attrs.get(field_name)
+            if not file_obj:
+                continue
+            label = field_name.replace("_", " ").replace("document", "file").strip()
+            try:
+                validate_document_upload(file_obj, label=label)
+            except ValueError as exc:
+                raise serializers.ValidationError({field_name: str(exc)}) from exc
+        return attrs
+
     def create(self, validated_data):
+        document_uploads = {
+            document_type: validated_data.pop(field_name, None)
+            for field_name, document_type in VENDOR_ONBOARD_DOCUMENT_FIELDS.items()
+        }
         password = validated_data.get("password")
         auto_pw = None
         if not password:
@@ -190,6 +315,17 @@ class VendorFullOnboardSerializer(serializers.Serializer):
             VendorOnboarding.objects.create(
                 vendor=vendor,
                 legal_name=validated_data.get("legal_name", "") or validated_data["store_name"],
+                vendor_type=validated_data.get("vendor_type", "retail_store"),
+                contact_person_name=validated_data.get("contact_person_name", ""),
+                contact_person_email=validated_data.get("contact_person_email", ""),
+                contact_person_phone=validated_data.get("contact_person_phone", ""),
+                gst_registered=validated_data.get("gst_registered", False),
+                pan_number=validated_data.get("pan_number", "").upper(),
+                gstin=validated_data.get("gstin", "").upper(),
+                cin_udyam=validated_data.get("cin_udyam", "").upper(),
+                fssai_license=validated_data.get("fssai_license", ""),
+                trademark_number=validated_data.get("trademark_number", "").upper(),
+                business_addresses=validated_data.get("business_addresses", []),
                 onboarding_status="submitted",
                 submitted_at=timezone.now()
             )
@@ -208,6 +344,23 @@ class VendorFullOnboardSerializer(serializers.Serializer):
                 description="Vendor onboarded via admin.",
                 performed_by=self.context.get("request").user if self.context.get("request") else None
             )
+            for document_type, file_obj in document_uploads.items():
+                if not file_obj:
+                    continue
+                VendorDocument.objects.create(
+                    vendor=vendor,
+                    document_type=document_type,
+                    file=file_obj,
+                    original_filename=file_obj.name,
+                    file_size_bytes=file_obj.size,
+                )
+            if any(document_uploads.values()):
+                VendorAuditLog.objects.create(
+                    vendor=vendor,
+                    action="document_uploaded",
+                    description="Vendor onboarding documents uploaded by admin.",
+                    performed_by=self.context.get("request").user if self.context.get("request") else None
+                )
 
         if auto_pw:
             vendor.auto_generated_password = auto_pw

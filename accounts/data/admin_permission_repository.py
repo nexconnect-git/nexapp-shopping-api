@@ -19,3 +19,10 @@ class AdminPermissionGrantRepository(BaseRepository):
         if search:
             queryset = queryset.filter(user__username__icontains=search)
         return queryset
+
+    @staticmethod
+    def exists_for_permissions(user, permissions):
+        return AdminPermissionGrant.objects.filter(
+            user=user,
+            permission__in=permissions,
+        ).exists()

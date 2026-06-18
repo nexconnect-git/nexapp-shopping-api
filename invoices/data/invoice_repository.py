@@ -22,6 +22,19 @@ class InvoiceRepository:
             return None
 
     @staticmethod
+    def get_by_id_with_related(invoice_id) -> Invoice | None:
+        try:
+            return Invoice.objects.select_related(
+                'order',
+                'order__customer',
+                'order__vendor',
+                'recipient',
+                'vendor',
+            ).get(pk=invoice_id)
+        except Invoice.DoesNotExist:
+            return None
+
+    @staticmethod
     def get_all() -> QuerySet:
         """Return all invoices (unfiltered)."""
         return Invoice.objects.all()

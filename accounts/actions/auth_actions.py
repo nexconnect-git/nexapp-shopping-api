@@ -150,14 +150,14 @@ class RequestMobileOTPAction:
                 if registered_email != fallback_email:
                     return _generic_otp_response(phone)
             else:
-                if UserRepository.phone_exists(phone):
+                if UserRepository.phone_exists(phone, role='customer'):
                     return _generic_otp_response(phone)
-                if UserRepository.email_exists(fallback_email):
+                if UserRepository.email_exists(fallback_email, role='customer'):
                     return _generic_otp_response(phone)
 
-        if self._purpose == MobileOTP.PURPOSE_REGISTER and UserRepository.phone_exists(phone):
+        if self._purpose == MobileOTP.PURPOSE_REGISTER and UserRepository.phone_exists(phone, role='customer'):
             raise ValueError('An account already exists for this mobile number. Please sign in instead.')
-        if self._purpose == MobileOTP.PURPOSE_REGISTER and UserRepository.email_exists(fallback_email):
+        if self._purpose == MobileOTP.PURPOSE_REGISTER and UserRepository.email_exists(fallback_email, role='customer'):
             raise ValueError('An account already exists for this email address. Please sign in instead.')
         if self._purpose == MobileOTP.PURPOSE_REGISTER:
             email_for_otp = fallback_email
@@ -242,7 +242,7 @@ class VerifyMobileOTPAction:
                 email = (otp.email or payload.get('email', '')).strip().lower()
                 if not email:
                     raise ValueError('Email is required to create your account.')
-                if UserRepository.email_exists(email):
+                if UserRepository.email_exists(email, role='customer'):
                     raise ValueError('An account already exists for this email address. Please sign in with the registered mobile number.')
                 user = UserProfileSerializer.Meta.model.objects.create(
                     username=_build_customer_username(phone),
@@ -254,7 +254,7 @@ class VerifyMobileOTPAction:
                 user.save()
                 created_customer = True
         else:
-            if UserRepository.phone_exists(phone):
+            if UserRepository.phone_exists(phone, role='customer'):
                 raise ValueError('An account already exists for this mobile number.')
 
             first_name = payload.get('first_name', '').strip()
@@ -262,7 +262,7 @@ class VerifyMobileOTPAction:
                 raise ValueError('First name is required to create an account.')
 
             email = (payload.get('email', '') or otp.email).strip().lower()
-            if UserRepository.email_exists(email):
+            if UserRepository.email_exists(email, role='customer'):
                 raise ValueError('An account already exists for this email address.')
 
             user = UserProfileSerializer.Meta.model.objects.create(

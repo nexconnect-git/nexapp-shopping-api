@@ -26,7 +26,7 @@ class VendorSerializer(serializers.ModelSerializer):
             "phone", "email", "address", "city", "state", "postal_code",
             "latitude", "longitude",
             "vendor_type", "vendor_tier",
-            "status", "is_open", "is_open_now", "availability_note", "opening_time", "closing_time", "is_accepting_orders",
+            "status", "status_reason", "is_open", "is_open_now", "availability_note", "opening_time", "closing_time", "is_accepting_orders",
             "operating_hours",
             "min_order_amount", "delivery_radius_km",
             "instant_delivery_radius_km", "max_delivery_radius_km",
@@ -38,7 +38,7 @@ class VendorSerializer(serializers.ModelSerializer):
             "created_at", "updated_at",
         ]
         read_only_fields = [
-            "id", "status", "average_rating", "total_ratings",
+            "id", "status", "status_reason", "average_rating", "total_ratings",
             "is_featured", "wallet_balance", "created_at", "updated_at",
         ]
 
@@ -182,8 +182,8 @@ class VendorRegistrationSerializer(serializers.Serializer):
 
     def validate_email(self, value: str) -> str:
         value = value.strip().lower()
-        if UserRepository.email_exists(value):
-            raise serializers.ValidationError("Email already exists.")
+        if UserRepository.email_exists(value, role="vendor"):
+            raise serializers.ValidationError("Email already exists for a vendor account.")
         return value
 
     def validate_phone(self, value: str) -> str:
@@ -191,8 +191,8 @@ class VendorRegistrationSerializer(serializers.Serializer):
             phone = normalize_phone(value)
         except ValueError as exc:
             raise serializers.ValidationError(str(exc)) from exc
-        if UserRepository.phone_exists(phone):
-            raise serializers.ValidationError("Phone number already exists.")
+        if UserRepository.phone_exists(phone, role="vendor"):
+            raise serializers.ValidationError("Phone number already exists for a vendor account.")
         return phone
 
     def create(self, validated_data):

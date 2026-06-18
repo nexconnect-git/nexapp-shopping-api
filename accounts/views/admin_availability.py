@@ -18,6 +18,7 @@ class AdminIdentityAvailabilityView(APIView):
                 field=request.data.get('field', ''),
                 value=request.data.get('value', ''),
                 exclude_user_id=request.data.get('exclude_user_id', '') or '',
+                role=request.data.get('role', '') or '',
             )
             return Response(result)
         except ValueError as exc:

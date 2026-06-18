@@ -1,12 +1,11 @@
 from orders.views.cart_views import CartView, AddToCartView, ReplaceCartView, UpdateCartItemView, ClearCartView
 from orders.views.payment_views import CreateRazorpayOrderView, VerifyRazorpayPaymentView, RazorpayWebhookView, InitiateCheckoutPaymentView, PaymentMethodsView
-from orders.views.order_views import (
-    CreateOrderView, OrderListView, OrderDetailView, CancelOrderView,
-    OrderTrackingView, OrderPaymentQRView, SubmitOrderRatingView,
-    TipDeliveryPartnerView,
-    DeliveryFeePreviewView, CheckoutPreviewView, AvailableSlotsView,
-    CancellationPolicyView, ReorderView,
-)
+from orders.views.checkout_preview_views import AvailableSlotsView, CancellationPolicyView, CheckoutPreviewView, DeliveryFeePreviewView
+from orders.views.create_order_views import CreateOrderView
+from orders.views.order_payment_qr_views import OrderPaymentQRView
+from orders.views.order_rating_views import SubmitOrderRatingView, TipDeliveryPartnerView
+from orders.views.order_read_views import CancelOrderView, OrderDetailView, OrderListView, OrderTrackingView
+from orders.views.reorder_views import ReorderView
 from orders.views.coupon_views import ValidateCouponView, CustomerCouponListView, AdminCouponViewSet
 from orders.views.issue_views import CustomerOrderIssueListCreateView, IssueOptionsView, CustomerOrderIssueDetailView, IssueMessageCreateView, IssueAttachmentCreateView
 from orders.views.admin_views import AdminOrderListView, AdminOrderDetailView, AdminOrderIssueListView, AdminOrderIssueDetailView, AdminPlatformSettingView, AdminPaymentsView

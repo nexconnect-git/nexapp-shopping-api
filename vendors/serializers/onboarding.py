@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from helpers.serializer_fields import SafeFileField
 from helpers.validators import validate_pan, validate_gstin, validate_ifsc, validate_document_upload
 from vendors.models import (
     VendorOnboarding, VendorBankDetails, VendorDocument,
@@ -77,6 +78,7 @@ class VendorBankDetailsSerializer(serializers.ModelSerializer):
 
 
 class VendorDocumentSerializer(serializers.ModelSerializer):
+    file = SafeFileField(required=True)
     verified_by_name = serializers.SerializerMethodField(read_only=True)
     document_type_label = serializers.CharField(source="get_document_type_display", read_only=True)
 

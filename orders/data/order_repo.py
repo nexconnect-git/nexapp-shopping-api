@@ -42,6 +42,18 @@ class OrderRepository:
         return qs.get(pk=pk)
 
     @staticmethod
+    def get_by_id_or_none(pk, select_related=None, prefetch=None):
+        qs = Order.objects.all()
+        if select_related:
+            qs = qs.select_related(*select_related)
+        if prefetch:
+            qs = qs.prefetch_related(*prefetch)
+        try:
+            return qs.get(pk=pk)
+        except Order.DoesNotExist:
+            return None
+
+    @staticmethod
     def get_tracking(order_id, user):
         return OrderTracking.objects.filter(
             order_id=order_id, order__customer=user

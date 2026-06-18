@@ -17,7 +17,7 @@ from vendors.actions import (
     MarkOrderReadyAction,
     VendorLiveOrdersAction,
 )
-from vendors.views.public import StandardPagination
+from vendors.helpers.public_vendor_helpers import StandardPagination
 from orders.serializers import OrderSerializer
 
 

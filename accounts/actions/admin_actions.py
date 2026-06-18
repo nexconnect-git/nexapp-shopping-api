@@ -168,29 +168,35 @@ class CheckUserAvailabilityAction:
     """Check whether user identity fields are available for onboarding flows."""
 
     VALID_FIELDS = {'username', 'email', 'phone'}
+    VALID_ROLES = {'customer', 'vendor', 'delivery', 'admin'}
 
-    def execute(self, field: str, value: str, exclude_user_id: str = '') -> Dict[str, Any]:
+    def execute(self, field: str, value: str, exclude_user_id: str = '', role: str = '') -> Dict[str, Any]:
         normalized_field = (field or '').strip().lower()
         normalized_value = (value or '').strip()
+        normalized_role = (role or '').strip().lower()
         if normalized_field not in self.VALID_FIELDS:
             raise ValueError('field must be username, email, or phone.')
         if not normalized_value:
             raise ValueError('value is required.')
+        if normalized_role and normalized_role not in self.VALID_ROLES:
+            raise ValueError('role must be customer, vendor, delivery, or admin.')
 
         exclude_id = exclude_user_id or None
+        role_scope = normalized_role or None
         if normalized_field == 'username':
             exists = UserRepository.username_exists(normalized_value, exclude_user_id=exclude_id)
             suggestions = self._username_suggestions(normalized_value) if exists else []
         elif normalized_field == 'email':
-            exists = UserRepository.email_exists(normalized_value, exclude_user_id=exclude_id)
-            suggestions = self._email_suggestions(normalized_value) if exists else []
+            exists = UserRepository.email_exists(normalized_value, exclude_user_id=exclude_id, role=role_scope)
+            suggestions = self._email_suggestions(normalized_value, role=role_scope) if exists else []
         else:
-            exists = UserRepository.phone_exists(normalized_value, exclude_user_id=exclude_id)
-            suggestions = self._phone_suggestions(normalized_value) if exists else []
+            exists = UserRepository.phone_exists(normalized_value, exclude_user_id=exclude_id, role=role_scope)
+            suggestions = self._phone_suggestions(normalized_value, role=role_scope) if exists else []
 
         return {
             'field': normalized_field,
             'value': normalized_value,
+            'role': normalized_role,
             'unique': not exists,
             'message': '' if not exists else f'{normalized_field.replace("_", " ").title()} is already in use.',
             'suggestions': suggestions,
@@ -207,7 +213,7 @@ class CheckUserAvailabilityAction:
                 break
         return candidates
 
-    def _email_suggestions(self, value: str) -> list[str]:
+    def _email_suggestions(self, value: str, role: str | None = None) -> list[str]:
         if '@' not in value:
             return []
         local, domain = value.split('@', 1)
@@ -216,13 +222,13 @@ class CheckUserAvailabilityAction:
         candidates = []
         for suffix in ('ops', 'admin', 'new'):
             candidate = f'{local}+{suffix}@{domain}'
-            if not UserRepository.email_exists(candidate):
+            if not UserRepository.email_exists(candidate, role=role):
                 candidates.append(candidate)
             if len(candidates) >= 3:
                 break
         return candidates
 
-    def _phone_suggestions(self, value: str) -> list[str]:
+    def _phone_suggestions(self, value: str, role: str | None = None) -> list[str]:
         digits = ''.join(ch for ch in value if ch.isdigit())
         if len(digits) < 4:
             return []
@@ -233,7 +239,7 @@ class CheckUserAvailabilityAction:
         candidates = []
         for offset in range(1, 10):
             candidate = f'{prefix}{base}{(last_digit + offset) % 10}'
-            if not UserRepository.phone_exists(candidate):
+            if not UserRepository.phone_exists(candidate, role=role):
                 candidates.append(candidate)
             if len(candidates) >= 3:
                 break

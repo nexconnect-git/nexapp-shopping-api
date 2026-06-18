@@ -44,6 +44,7 @@ razorpay==1.4.2
 # HTTP client (used by FCM fallback and Razorpay webhooks)
 requests==2.32.3
 chardet==5.2.0
+coverage==7.14.1
 
 # razorpay SDK uses pkg_resources; pin setuptools to a version that still ships it
 setuptools<70

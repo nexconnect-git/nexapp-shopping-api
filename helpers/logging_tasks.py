@@ -2,7 +2,10 @@
 
 from pathlib import Path
 
-import boto3
+try:
+    import boto3
+except ImportError:  # pragma: no cover - S3 logging is optional in local/test envs
+    boto3 = None
 
 try:
     from django_rq import job
@@ -25,7 +28,7 @@ def upload_log_file_to_s3(
 ):
     """Upload a local log file snapshot to S3."""
     file_path = Path(local_file_path)
-    if not file_path.exists() or not s3_bucket or not s3_key:
+    if boto3 is None or not file_path.exists() or not s3_bucket or not s3_key:
         return
 
     client_kwargs = {

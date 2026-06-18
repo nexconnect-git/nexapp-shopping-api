@@ -141,10 +141,12 @@ class ProductSearchByLocationView(APIView):
             match["missing_terms"] = [term for term in terms if term not in match["matched_terms"]]
             match["matched_count"] = len(match["matched_terms"])
         results = sorted(
-            store_matches.values(),
+            [
+                match for match in store_matches.values()
+                if not address or match["available"]
+            ],
             key=lambda item: (
                 -item["matched_count"],
-                0 if item["available"] else 1,
                 item["distance_km"] if item["distance_km"] is not None else 999999,
                 item["estimated_delivery_minutes"] if item["estimated_delivery_minutes"] is not None else 999999,
                 -float(item["store"].get("average_rating") or 0),

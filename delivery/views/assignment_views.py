@@ -20,11 +20,12 @@ from delivery.serializers import DeliveryAssignmentSerializer
 from orders.serializers import OrderSerializer
 from delivery.tasks import check_assignment_timeout, check_stale_assignments
 from delivery.data.assignment_repo import DeliveryAssignmentRepository
+from delivery.permissions import IsApprovedDeliveryPartner
 from helpers.validators import validate_image_upload
 
 
 class AcceptDeliveryView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsApprovedDeliveryPartner]
 
     def post(self, request, pk):
         try:
@@ -37,7 +38,7 @@ class AcceptDeliveryView(APIView):
 
 
 class UpdateDeliveryStatusView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsApprovedDeliveryPartner]
 
     def patch(self, request, pk):
         new_status = request.data.get("status")
@@ -51,7 +52,7 @@ class UpdateDeliveryStatusView(APIView):
 
 
 class ConfirmDeliveryView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsApprovedDeliveryPartner]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def post(self, request, pk):
@@ -75,7 +76,7 @@ class ConfirmDeliveryView(APIView):
 
 
 class PendingAssignmentRequestsView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsApprovedDeliveryPartner]
 
     def get(self, request):
         partner = request.user.delivery_profile
@@ -101,7 +102,7 @@ class PendingAssignmentRequestsView(APIView):
 
 
 class AcceptAssignmentView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsApprovedDeliveryPartner]
 
     def post(self, request, assignment_id):
         try:
@@ -114,7 +115,7 @@ class AcceptAssignmentView(APIView):
 
 
 class RejectAssignmentView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsApprovedDeliveryPartner]
 
     def post(self, request, assignment_id):
         try:
@@ -127,7 +128,7 @@ class RejectAssignmentView(APIView):
 
 
 class CancelAssignmentView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsApprovedDeliveryPartner]
 
     def post(self, request, pk):
         try:

@@ -1,0 +1,23 @@
+[run]
+source = .
+omit =
+    */migrations/*
+    */backend_quality_tests/*
+    manage.py
+    clear_rq.py
+    apply_uuids.py
+    */admin.py
+    */apps.py
+    */urls.py
+    */config/*
+    */routes/*
+    */asgi.py
+    */wsgi.py
+
+[report]
+show_missing = True
+skip_covered = True
+precision = 2
+exclude_also =
+    if __name__ == .__main__.:
+    raise NotImplementedError

@@ -3,7 +3,7 @@ TicketNotificationService — creates in-app notifications (and any future
 email/push channels) when a support ticket changes state.
 """
 
-from notifications.models import Notification
+from notifications.data import NotificationRepository
 from support.models import SupportTicket
 
 
@@ -17,7 +17,7 @@ class TicketNotificationService:
         Args:
             ticket: The SupportTicket that received an admin response.
         """
-        Notification.objects.create(
+        NotificationRepository.create(
             user=ticket.vendor.user,
             title='Support Ticket Updated',
             message=f'Your ticket "{ticket.subject}" has been responded to.',
@@ -33,7 +33,7 @@ class TicketNotificationService:
             ticket: The affected SupportTicket.
             new_status: The new human-readable or raw status string.
         """
-        Notification.objects.create(
+        NotificationRepository.create(
             user=ticket.vendor.user,
             title='Support Ticket Status Changed',
             message=f'Your ticket "{ticket.subject}" status changed to {new_status}.',
@@ -48,7 +48,7 @@ class TicketNotificationService:
         Args:
             ticket: The closed SupportTicket.
         """
-        Notification.objects.create(
+        NotificationRepository.create(
             user=ticket.vendor.user,
             title='Support Ticket Closed',
             message=f'Your ticket "{ticket.subject}" has been closed.',
