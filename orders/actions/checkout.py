@@ -77,6 +77,25 @@ def validate_single_vendor_cart(vendor_items: dict) -> None:
     })
 
 
+def validate_vendor_minimum_order(vendor_items: dict) -> None:
+    for vendor, items in vendor_items.items():
+        minimum = decimal_money(getattr(vendor, "min_order_amount", 0))
+        if minimum <= 0:
+            continue
+        subtotal = sum(item.product.price * item.quantity for item in items)
+        if subtotal < minimum:
+            remaining = (minimum - subtotal).quantize(Decimal("0.01"))
+            raise ValueError({
+                "code": "minimum_order_not_met",
+                "error": f"Add Rs.{remaining} more to meet {vendor.store_name}'s minimum order amount.",
+                "store_id": str(vendor.id),
+                "store_name": vendor.store_name,
+                "minimum_order_amount": str(minimum),
+                "current_subtotal": str(decimal_money(subtotal)),
+                "remaining": str(remaining),
+            })
+
+
 def validate_cod_confirmation(payment_method: str, cod_upi_confirmed: bool) -> None:
     if payment_method == "cod" and not cod_upi_confirmed:
         raise ValueError({
@@ -204,6 +223,7 @@ def calculate_checkout_preview(
     _cart, cart_items = cart_items_for_user(user)
     vendor_items = group_items_by_vendor(cart_items)
     validate_single_vendor_cart(vendor_items)
+    validate_vendor_minimum_order(vendor_items)
     vendor = next(iter(vendor_items))
     items = vendor_items[vendor]
     is_open_now, availability_note = get_vendor_availability(vendor, current_dt=timezone.localtime(timezone.now()))
@@ -256,6 +276,7 @@ def calculate_checkout_preview(
         "wallet_discount": wallet_amount,
         "loyalty_discount": loyalty_discount,
         "final_payable": total,
+        "free_delivery_above": platform.free_delivery_above,
         "delivery_quotes": delivery_quotes,
         "requires_far_delivery_confirmation": bool(far_delivery_quotes),
         "far_delivery_quotes": far_delivery_quotes,
@@ -266,21 +287,22 @@ def calculate_checkout_preview(
 
 
 def public_price_breakup(preview: dict) -> dict:
-    keys = [
-        "item_subtotal",
-        "product_discount",
-        "coupon_discount",
-        "delivery_fee",
-        "platform_fee",
-        "packaging_fee",
-        "small_cart_fee",
-        "tax_amount",
-        "surge_fee",
-        "wallet_discount",
-        "loyalty_discount",
-        "final_payable",
-    ]
-    return {key: str(preview[key]) for key in keys}
+    defaults = {
+        "item_subtotal": Decimal("0.00"),
+        "product_discount": Decimal("0.00"),
+        "coupon_discount": Decimal("0.00"),
+        "delivery_fee": Decimal("0.00"),
+        "platform_fee": Decimal("0.00"),
+        "packaging_fee": Decimal("0.00"),
+        "small_cart_fee": Decimal("0.00"),
+        "tax_amount": Decimal("0.00"),
+        "surge_fee": Decimal("0.00"),
+        "wallet_discount": Decimal("0.00"),
+        "loyalty_discount": Decimal("0.00"),
+        "final_payable": Decimal("0.00"),
+        "free_delivery_above": Decimal("0.00"),
+    }
+    return {key: str(preview.get(key, default)) for key, default in defaults.items()}
 
 
 def available_slots_for_cart(user, start_date=None, days: int = 7) -> list[dict]:

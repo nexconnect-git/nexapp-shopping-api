@@ -3,6 +3,7 @@ from backend.actions.customer_flow.location import CustomerLocationMixin
 from backend.actions.customer_flow.orders import GetCustomerActiveOrderAction
 from backend.actions.customer_flow.personalization import GetCustomerBuyAgainAction
 from backend.data import CustomerFlowRepository
+from backend.services import RecommendationServiceClient
 from helpers.delivery_quotes import quote_vendor_delivery
 from products.data.category_repository import CategoryRepository
 from products.serializers import CategorySerializer, ProductListSerializer
@@ -18,16 +19,36 @@ class GetCustomerFlowHomeAction(CustomerLocationMixin):
         serviceability = self.serviceability_payload(request)
         category_ids = CategoryRepository.get_available_customer_category_ids(address=address)
         categories = CategoryRepository.get_customer_visible(category_ids=category_ids)
-        stores = self._nearby_stores(request, address)
+        stores = self._ml_ranked_stores(request, self._nearby_stores(request, address))
         store_ids = [store.get('id') for store in stores]
         products = self._products(store_ids=store_ids)
-        coupons = self.repository.active_coupons()[:6]
+        is_serviceable = serviceability.get('is_serviceable')
+        if not serviceability.get('is_serviceable'):
+            products = products.none()
+        coupons = self.repository.active_coupons()[:6] if is_serviceable else []
         active_order = GetCustomerActiveOrderAction().execute(request)['active_order']
         category_cards = CategorySerializer(categories[:12], many=True, context={'request': request}).data
         buy_again = GetCustomerBuyAgainAction().execute(request)['results']
+        if not is_serviceable:
+            buy_again = []
         nearby_stores = stores[:12]
-        flash_deals = ProductListSerializer(products.filter(compare_price__gt=0)[:12], many=True, context={'request': request}).data
-        recommended_products = ProductListSerializer(products[:16], many=True, context={'request': request}).data
+        recommended_queryset = self._ml_ranked_products(
+            request=request,
+            products=products,
+            recommendation_type='recommended',
+            fallback_queryset=products,
+            limit=16,
+        )
+        flash_queryset = products.filter(compare_price__gt=0)
+        flash_queryset = self._ml_ranked_products(
+            request=request,
+            products=products,
+            recommendation_type='flash_deals',
+            fallback_queryset=flash_queryset,
+            limit=12,
+        )
+        flash_deals = ProductListSerializer(flash_queryset, many=True, context={'request': request}).data
+        recommended_products = ProductListSerializer(recommended_queryset, many=True, context={'request': request}).data
         coupon_cards = CouponSerializer(coupons, many=True).data
         hero = self._hero_payload(serviceability, nearby_stores, recommended_products, coupon_cards)
 
@@ -98,3 +119,71 @@ class GetCustomerFlowHomeAction(CustomerLocationMixin):
         if store_ids:
             products = products.filter(vendor_id__in=store_ids)
         return products
+
+    def _ml_ranked_products(self, request, products, recommendation_type: str, fallback_queryset, limit: int):
+        ranked_items = RecommendationServiceClient().user_recommendations(
+            user_id=str(request.user.id) if getattr(request.user, 'is_authenticated', False) else None,
+            limit=max(limit * 3, limit),
+            recommendation_type=recommendation_type,
+            location=self._recommendation_location(request),
+        )
+        ranked_ids = [item['product_id'] for item in ranked_items if item.get('product_id')]
+        if not ranked_ids:
+            return fallback_queryset[:limit]
+
+        candidate_queryset = fallback_queryset if recommendation_type == 'flash_deals' else products
+        allowed_products = {
+            str(product.id): product
+            for product in candidate_queryset.filter(id__in=ranked_ids)
+        }
+        ranked_products = [
+            allowed_products[product_id]
+            for product_id in ranked_ids
+            if product_id in allowed_products
+        ][:limit]
+        if len(ranked_products) >= limit:
+            return ranked_products
+
+        used_ids = {str(product.id) for product in ranked_products}
+        for product in fallback_queryset.exclude(id__in=used_ids)[:limit - len(ranked_products)]:
+            ranked_products.append(product)
+        return ranked_products
+
+    def _ml_ranked_stores(self, request, stores: list[dict]) -> list[dict]:
+        if not stores:
+            return stores
+        ranked_items = RecommendationServiceClient().store_recommendations(
+            user_id=str(request.user.id) if getattr(request.user, 'is_authenticated', False) else None,
+            limit=max(len(stores), 12),
+            location=self._recommendation_location(request),
+        )
+        ranked_ids = [item['store_id'] for item in ranked_items if item.get('store_id')]
+        if not ranked_ids:
+            return stores
+
+        allowed_stores = {
+            str(store.get('id')): store
+            for store in stores
+            if store.get('id')
+        }
+        ranked_stores = [
+            allowed_stores[store_id]
+            for store_id in ranked_ids
+            if store_id in allowed_stores
+        ]
+        used_ids = {str(store.get('id')) for store in ranked_stores}
+        ranked_stores.extend([
+            store
+            for store in stores
+            if str(store.get('id')) not in used_ids
+        ])
+        return ranked_stores
+
+    def _recommendation_location(self, request) -> dict:
+        return {
+            'lat': request.query_params.get('lat') or None,
+            'lng': request.query_params.get('lng') or None,
+            'city': request.query_params.get('city') or '',
+            'state': request.query_params.get('state') or '',
+            'postal_code': request.query_params.get('postal_code') or '',
+        }

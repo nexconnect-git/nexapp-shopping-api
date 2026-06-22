@@ -5,6 +5,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from backend.services import RecommendationServiceClient
 from helpers.cache_helpers import cached_api_response
 from orders.models import OrderItem
 from vendors.data import VendorRepository
@@ -96,6 +97,8 @@ class VendorListView(APIView):
             cards = [card for card in cards if card.get('within_instant_radius') is False]
         elif search_mode == 'global_item':
             cards = [card for card in cards if card.get('matched_products_preview')]
+        if sort_key == 'relevance':
+            cards = _rank_vendor_cards_with_ml(request, cards)
 
         summary = {
             'total': len(cards),
@@ -172,4 +175,46 @@ class NearbyVendorsView(APIView):
 
         cards = serialize_vendor_cards(request, list(vendors.distinct()), address)
         cards = [card for card in cards if card.get('within_instant_radius')]
+        cards = _rank_vendor_cards_with_ml(request, cards)
         return Response(cards)
+
+
+def _recommendation_location(request) -> dict:
+    return {
+        'lat': request.query_params.get('lat') or None,
+        'lng': request.query_params.get('lng') or None,
+        'city': request.query_params.get('city') or '',
+        'state': request.query_params.get('state') or '',
+        'postal_code': request.query_params.get('postal_code') or '',
+    }
+
+
+def _rank_vendor_cards_with_ml(request, cards: list[dict]) -> list[dict]:
+    if not cards:
+        return cards
+    ranked_items = RecommendationServiceClient().store_recommendations(
+        user_id=str(request.user.id) if getattr(request.user, 'is_authenticated', False) else None,
+        limit=max(len(cards), 12),
+        location=_recommendation_location(request),
+    )
+    ranked_ids = [item['store_id'] for item in ranked_items if item.get('store_id')]
+    if not ranked_ids:
+        return cards
+
+    allowed_cards = {
+        str(card.get('id')): card
+        for card in cards
+        if card.get('id')
+    }
+    ranked_cards = [
+        allowed_cards[store_id]
+        for store_id in ranked_ids
+        if store_id in allowed_cards
+    ]
+    used_ids = {str(card.get('id')) for card in ranked_cards}
+    ranked_cards.extend([
+        card
+        for card in cards
+        if str(card.get('id')) not in used_ids
+    ])
+    return ranked_cards

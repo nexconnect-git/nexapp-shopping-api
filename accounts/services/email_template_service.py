@@ -11,7 +11,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 class EmailTemplateService:
     """Render Nextou email templates with shared safe defaults."""
 
-    TEMPLATE_DIR = Path(settings.BASE_DIR) / "templates" / "emails"
+    TEMPLATE_DIR = Path(settings.BASE_DIR).parent / "templates" / "emails"
     LEGAL_NOTE = "This is an automated email. Please do not reply directly to this message."
     _environment: Environment | None = None
 

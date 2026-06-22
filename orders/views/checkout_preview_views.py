@@ -79,6 +79,7 @@ class DeliveryFeePreviewView(APIView):
             {
                 'fees': fees,
                 'total_delivery_fee': str(total.quantize(Decimal('0.01'))),
+                'free_delivery_above': str(platform.free_delivery_above),
                 'requires_far_delivery_confirmation': bool(far_delivery_quotes),
                 'far_delivery_quotes': far_delivery_quotes,
             }

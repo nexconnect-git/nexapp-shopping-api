@@ -23,6 +23,7 @@ from orders.actions.checkout import (
     validate_delivery_address,
     validate_schedule_slot,
     validate_single_vendor_cart,
+    validate_vendor_minimum_order,
 )
 from orders.actions.refund_actions import IssueRazorpayRefundAction
 from orders.models import (
@@ -113,6 +114,7 @@ class CreateOrdersFromCartAction(BaseAction):
         for item in cart_items:
             vendor_items[item.product.vendor].append(item)
         validate_single_vendor_cart(vendor_items)
+        validate_vendor_minimum_order(vendor_items)
 
         vendor_quotes = {}
         confirmation_quotes = []
@@ -214,6 +216,8 @@ class CreateOrdersFromCartAction(BaseAction):
             quote = vendor_quotes[vendor.id]
 
             delivery_fee = quote.delivery_fee
+            if platform.free_delivery_above > 0 and subtotal >= platform.free_delivery_above:
+                delivery_fee = Decimal("0")
             if coupon and coupon.discount_type == "free_delivery":
                 delivery_fee = Decimal("0")
 
@@ -259,6 +263,7 @@ class CreateOrdersFromCartAction(BaseAction):
                 "wallet_discount": vendor_wallet_share,
                 "loyalty_discount": vendor_loyalty_share,
                 "final_payable": total,
+                "free_delivery_above": platform.free_delivery_above,
             }
 
             order = Order.objects.create(
@@ -424,4 +429,3 @@ class CreateOrdersFromCartAction(BaseAction):
             and product.is_available == ProductRepository.CUSTOMER_VISIBLE_FILTERS["is_available"]
             and bool(product.catalog_product_id)
         )
-

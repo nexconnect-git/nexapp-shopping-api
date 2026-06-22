@@ -241,6 +241,7 @@ REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'EXCEPTION_HANDLER': 'helpers.api_exception_handler.nexconnect_exception_handler',
 }
 
 # ---------------------------------------------------------------------------
@@ -268,18 +269,68 @@ AUTH_REFRESH_COOKIE_DOMAIN = os.environ.get('AUTH_REFRESH_COOKIE_DOMAIN', '')
 # Email
 # ---------------------------------------------------------------------------
 
-_smtp_configured = bool(os.environ.get('SMTP_HOST') and os.environ.get('SMTP_EMAIL'))
+
+def _env_first(*names, default=''):
+    for name in names:
+        value = os.environ.get(name)
+        if value not in (None, ''):
+            return value
+    return default
+
+
+def _env_bool(value, default=False):
+    if value in (None, ''):
+        return default
+    return str(value).strip().lower() in ('true', '1', 'yes', 'on')
+
+
+EMAIL_HOST = _env_first('SMTP_HOST', 'EMAIL_HOST', default='localhost')
+EMAIL_PORT = int(_env_first('SMTP_PORT', 'EMAIL_PORT', default='1025'))
+EMAIL_HOST_USER = _env_first('SMTP_EMAIL', 'SMTP_USER', 'EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = _env_first('SMTP_APP_PASSWORD', 'SMTP_PASSWORD', 'EMAIL_HOST_PASSWORD')
+_smtp_configured = bool(
+    EMAIL_HOST
+    and EMAIL_HOST != 'localhost'
+    and (EMAIL_HOST_USER or EMAIL_HOST_PASSWORD)
+)
+_default_email_backend = (
+    'django.core.mail.backends.smtp.EmailBackend'
+    if _smtp_configured or not DEBUG
+    else 'django.core.mail.backends.console.EmailBackend'
+)
 EMAIL_BACKEND = os.environ.get(
     'EMAIL_BACKEND',
-    'django.core.mail.backends.smtp.EmailBackend' if _smtp_configured else 'django.core.mail.backends.console.EmailBackend',
+    _default_email_backend,
 )
-EMAIL_HOST = os.environ.get('SMTP_HOST') or os.environ.get('EMAIL_HOST', 'localhost')
-EMAIL_PORT = int(os.environ.get('SMTP_PORT') or os.environ.get('EMAIL_PORT', 1025))
-EMAIL_HOST_USER = os.environ.get('SMTP_EMAIL') or os.environ.get('EMAIL_HOST_USER', '')
-EMAIL_HOST_PASSWORD = os.environ.get('SMTP_APP_PASSWORD') or os.environ.get('EMAIL_HOST_PASSWORD', '')
-_smtp_secure = (os.environ.get('SMTP_SECURE') or os.environ.get('EMAIL_USE_TLS', 'False')).strip().lower()
-EMAIL_USE_SSL = _smtp_secure in ('ssl', 'smtps') or (_smtp_secure in ('true', '1', 'yes') and EMAIL_PORT == 465)
-EMAIL_USE_TLS = not EMAIL_USE_SSL and _smtp_secure in ('true', '1', 'yes', 'tls', 'starttls')
+_non_sending_email_backends = (
+    'console.EmailBackend',
+    'dummy.EmailBackend',
+    'locmem.EmailBackend',
+    'filebased.EmailBackend',
+)
+if not DEBUG and any(name in EMAIL_BACKEND for name in _non_sending_email_backends):
+    raise ImproperlyConfigured(
+        'EMAIL_BACKEND must use a sending backend when DEBUG=False. '
+        'Set EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend and '
+        'provide SMTP_HOST/EMAIL_HOST, SMTP_PORT/EMAIL_PORT, SMTP_EMAIL/EMAIL_HOST_USER, '
+        'SMTP_APP_PASSWORD/EMAIL_HOST_PASSWORD, and SMTP_SECURE or EMAIL_USE_TLS/EMAIL_USE_SSL.'
+    )
+_smtp_secure = _env_first('SMTP_SECURE').strip().lower()
+_email_use_ssl = _env_bool(os.environ.get('EMAIL_USE_SSL'))
+_email_use_tls = _env_bool(os.environ.get('EMAIL_USE_TLS'))
+EMAIL_USE_SSL = (
+    _smtp_secure in ('ssl', 'smtps')
+    or (_smtp_secure in ('true', '1', 'yes') and EMAIL_PORT == 465)
+    or _email_use_ssl
+)
+EMAIL_USE_TLS = (
+    not EMAIL_USE_SSL
+    and (
+        _smtp_secure in ('true', '1', 'yes', 'tls', 'starttls')
+        or _email_use_tls
+    )
+)
+EMAIL_TIMEOUT = int(_env_first('SMTP_TIMEOUT', 'EMAIL_TIMEOUT', default='20'))
 DEFAULT_FROM_EMAIL = (
     os.environ.get('EMAIL_FROM_ADDRESS')
     or os.environ.get('FROM_EMAIL')
@@ -322,6 +373,14 @@ FCM_SERVER_KEY = os.environ.get('FCM_SERVER_KEY', '')
 RAZORPAY_KEY_ID = os.environ.get('RAZORPAY_KEY_ID', '')
 RAZORPAY_KEY_SECRET = os.environ.get('RAZORPAY_KEY_SECRET', '')
 RAZORPAY_WEBHOOK_SECRET = os.environ.get('RAZORPAY_WEBHOOK_SECRET', '')
+
+# ---------------------------------------------------------------------------
+# Recommendation service
+# ---------------------------------------------------------------------------
+
+RECOMMENDATION_SERVICE_URL = os.environ.get('RECOMMENDATION_SERVICE_URL', '').rstrip('/')
+RECOMMENDATION_SERVICE_ENABLED = env_bool('RECOMMENDATION_SERVICE_ENABLED', bool(RECOMMENDATION_SERVICE_URL))
+RECOMMENDATION_SERVICE_TIMEOUT_SECONDS = float(os.environ.get('RECOMMENDATION_SERVICE_TIMEOUT_SECONDS', '1.5'))
 
 # ---------------------------------------------------------------------------
 # RQ (background jobs)

@@ -2,6 +2,7 @@ from rest_framework import serializers
 from django.utils.text import slugify
 
 from helpers.media_helpers import safe_media_url
+from helpers.vendor_hours import get_vendor_availability
 from products.models import Product
 from products.serializers.catalog_serializers import CatalogProductSerializer
 from products.serializers.category_serializers import CategorySerializer
@@ -101,6 +102,7 @@ class ProductSerializer(serializers.ModelSerializer):
 class ProductListSerializer(serializers.ModelSerializer):
     """Lightweight product serializer for list views (no nested reviews)."""
 
+    vendor = serializers.SerializerMethodField()
     primary_image = serializers.SerializerMethodField()
     catalog_product = CatalogProductSerializer(read_only=True)
     vendor_name = serializers.CharField(source="vendor.store_name", read_only=True)
@@ -147,6 +149,20 @@ class ProductListSerializer(serializers.ModelSerializer):
             if catalog_primary:
                 return safe_media_url(catalog_primary.image, request=self.context.get("request"))
         return None
+
+    def get_vendor(self, obj) -> dict:
+        vendor = obj.vendor
+        return {
+            "id": str(vendor.id),
+            "store_name": vendor.store_name,
+            "min_order_amount": str(vendor.min_order_amount),
+            "is_open": vendor.is_open,
+            "is_open_now": get_vendor_availability(vendor)[0],
+            "availability_note": get_vendor_availability(vendor)[1],
+            "is_accepting_orders": vendor.is_accepting_orders,
+            "opening_time": str(vendor.opening_time) if vendor.opening_time else "",
+            "closing_time": str(vendor.closing_time) if vendor.closing_time else "",
+        }
 
     def get_image_count(self, obj) -> int:
         annotated = getattr(obj, "image_count", None)
