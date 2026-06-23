@@ -26,7 +26,16 @@ DATABASES = {
 CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
 CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
 ROOT_URLCONF = "backend.routes"
-SILENCED_SYSTEM_CHECKS = ["urls.W005", "urls.E007", "urls.W001", "accounts.E001"]
+EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+SILENCED_SYSTEM_CHECKS = [
+    "urls.W005",
+    "urls.E007",
+    "urls.W001",
+    "accounts.E001",
+    "accounts.E002",
+    "accounts.W001",
+    "accounts.W002",
+]
 ALLOWED_HOSTS = [*ALLOWED_HOSTS, "testserver"]
 DEBUG = False
 ENABLE_DJANGO_RQ_DASHBOARD = False
