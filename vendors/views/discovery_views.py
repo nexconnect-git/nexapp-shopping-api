@@ -1,13 +1,19 @@
 from decimal import Decimal
 
+from django.db import models
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from backend.actions.customer_flow.fulfillment_filters import (
+    active_fulfillment_node_for_request,
+    should_enforce_fulfillment_node_for_request,
+)
 from backend.services import RecommendationServiceClient
 from helpers.cache_helpers import cached_api_response
 from orders.models import OrderItem
+from products.data.product_repository import ProductRepository
 from vendors.data import VendorRepository
 from vendors.helpers.public_vendor_helpers import (
     StandardPagination,
@@ -33,6 +39,7 @@ class VendorListView(APIView):
     def _get_uncached(self, request):
         repo = VendorRepository()
         address = build_request_address(request)
+        fulfillment_node = active_fulfillment_node_for_request(request)
         search = request.query_params.get('search', '').strip()
         search_mode = request.query_params.get('search_mode', 'browse').strip() or 'browse'
         category = request.query_params.get('category')
@@ -62,6 +69,10 @@ class VendorListView(APIView):
         if isinstance(vendors, Response):
             return vendors
 
+        vendors = self._filter_vendors_for_fulfillment_node(vendors, fulfillment_node, request)
+        if isinstance(vendors, Response):
+            return vendors
+
         if city:
             vendors = vendors.filter(city__iexact=city)
         vendors = vendors.filter(is_open=True, is_accepting_orders=True)
@@ -82,6 +93,7 @@ class VendorListView(APIView):
             address,
             product_query=product_query or search,
             previous_vendor_ids=previous_vendor_ids,
+            fulfillment_node=fulfillment_node,
         )
         if search_mode not in {'manual_far', 'global_item'} and not include_far_same_state:
             cards = [card for card in cards if card.get('is_serviceable', True)]
@@ -118,6 +130,26 @@ class VendorListView(APIView):
             response.data['cities'] = cities
             return response
         return Response(cards)
+
+    def _filter_vendors_for_fulfillment_node(self, vendors, fulfillment_node, request):
+        if fulfillment_node:
+            if fulfillment_node.vendor_id:
+                return vendors.filter(id=fulfillment_node.vendor_id)
+            return vendors.filter(
+                products__fulfillment_inventory__node=fulfillment_node,
+                products__fulfillment_inventory__is_available=True,
+                products__fulfillment_inventory__stock__gt=0,
+                products__fulfillment_inventory__reserved_stock__lt=models.F(
+                    "products__fulfillment_inventory__stock"
+                ),
+                **{
+                    f"products__{key}": value
+                    for key, value in ProductRepository.customer_visible_filter().items()
+                },
+            ).distinct()
+        if should_enforce_fulfillment_node_for_request(request):
+            return Response({'count': 0, 'results': []})
+        return vendors
 
     def _vendor_queryset(self, repo, search_mode, product_query, search, state, category, max_price, min_rating, offers, include_far_same_state):
         if search_mode == 'global_item':
@@ -167,13 +199,34 @@ class NearbyVendorsView(APIView):
         if not address:
             return Response({'error': 'lat and lng reqd.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        fulfillment_node = active_fulfillment_node_for_request(request)
+        if not fulfillment_node and should_enforce_fulfillment_node_for_request(request):
+            return Response([])
+
         category = request.query_params.get('category')
         repo = VendorRepository()
         vendors = repo.get_approved_vendors(category=category)
+        if fulfillment_node:
+            if fulfillment_node.vendor_id:
+                vendors = vendors.filter(id=fulfillment_node.vendor_id)
+            else:
+                visible_filter = {
+                    f"products__{key}": value
+                    for key, value in ProductRepository.customer_visible_filter().items()
+                }
+                vendors = vendors.filter(
+                    products__fulfillment_inventory__node=fulfillment_node,
+                    products__fulfillment_inventory__is_available=True,
+                    products__fulfillment_inventory__stock__gt=0,
+                    products__fulfillment_inventory__reserved_stock__lt=models.F(
+                        "products__fulfillment_inventory__stock"
+                    ),
+                    **visible_filter,
+                )
         if getattr(request.user, 'is_authenticated', False):
             vendors = repo.annotate_previous_order_flag(vendors, request.user)
 
-        cards = serialize_vendor_cards(request, list(vendors.distinct()), address)
+        cards = serialize_vendor_cards(request, list(vendors.distinct()), address, fulfillment_node=fulfillment_node)
         cards = [card for card in cards if card.get('within_instant_radius')]
         cards = _rank_vendor_cards_with_ml(request, cards)
         return Response(cards)

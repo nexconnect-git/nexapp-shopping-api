@@ -1,10 +1,12 @@
 from accounts.models import Address
+from backend.actions.customer_flow.fulfillment_filters import filter_products_for_fulfillment_node
 from backend.actions.customer_flow.location import CustomerLocationMixin
 from backend.actions.customer_flow.orders import GetCustomerActiveOrderAction
 from backend.actions.customer_flow.personalization import GetCustomerBuyAgainAction
 from backend.data import CustomerFlowRepository
 from backend.services import RecommendationServiceClient
 from helpers.delivery_quotes import quote_vendor_delivery
+from helpers.vendor_hours import is_vendor_open_now
 from products.data.category_repository import CategoryRepository
 from products.serializers import CategorySerializer, ProductListSerializer
 from vendors.serializers.public import VendorListSerializer
@@ -17,14 +19,26 @@ class GetCustomerFlowHomeAction(CustomerLocationMixin):
     def execute(self, request) -> dict:
         address = self.request_address(request)
         serviceability = self.serviceability_payload(request)
-        category_ids = CategoryRepository.get_available_customer_category_ids(address=address)
+        fulfillment_node_payload = serviceability.get('fulfillment_node') or {}
+        fulfillment_node_id = fulfillment_node_payload.get('id')
+        fulfillment_vendor_id = fulfillment_node_payload.get('vendor_id')
+        is_serviceable = serviceability.get('is_serviceable')
+        category_ids = CategoryRepository.get_available_customer_category_ids(
+            address=address,
+            fulfillment_node=fulfillment_node_id,
+        )
         categories = CategoryRepository.get_customer_visible(category_ids=category_ids)
         stores = self._ml_ranked_stores(request, self._nearby_stores(request, address))
+        if fulfillment_node_id:
+            stores = [
+                store for store in stores
+                if fulfillment_vendor_id and str(store.get('id')) == str(fulfillment_vendor_id)
+            ]
         store_ids = [store.get('id') for store in stores]
-        products = self._products(store_ids=store_ids)
-        is_serviceable = serviceability.get('is_serviceable')
+        products = self._products(store_ids=store_ids, fulfillment_node_id=fulfillment_node_id)
         if not serviceability.get('is_serviceable'):
             products = products.none()
+            categories = categories.none()
         coupons = self.repository.active_coupons()[:6] if is_serviceable else []
         active_order = GetCustomerActiveOrderAction().execute(request)['active_order']
         category_cards = CategorySerializer(categories[:12], many=True, context={'request': request}).data
@@ -96,6 +110,8 @@ class GetCustomerFlowHomeAction(CustomerLocationMixin):
     def _nearby_stores(self, request, address: Address | None) -> list[dict]:
         cards = []
         for store in self.repository.open_approved_stores():
+            if not is_vendor_open_now(store):
+                continue
             payload = VendorListSerializer(store, context={'request': request}).data
             if address:
                 try:
@@ -114,8 +130,10 @@ class GetCustomerFlowHomeAction(CustomerLocationMixin):
             ),
         )
 
-    def _products(self, store_ids: list[str]):
+    def _products(self, store_ids: list[str], fulfillment_node_id=None):
         products = self.repository.customer_visible_products()
+        if fulfillment_node_id:
+            products = filter_products_for_fulfillment_node(products, fulfillment_node_id)
         if store_ids:
             products = products.filter(vendor_id__in=store_ids)
         return products

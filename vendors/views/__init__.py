@@ -30,6 +30,19 @@ from vendors.views.admin_payouts import (
     AdminVendorPayoutScheduleView, AdminVendorPayoutSendPaymentView,
     AdminVendorPayoutForcePaidView,
 )
+from vendors.views.fulfillment_admin import (
+    AdminFulfillmentNodeDetailView,
+    AdminFulfillmentNodeInventoryDetailView,
+    AdminFulfillmentNodeInventoryListCreateView,
+    AdminFulfillmentNodeListCreateView,
+    AdminFulfillmentNodeServiceAreaDetailView,
+    AdminFulfillmentNodeServiceAreaListCreateView,
+    AdminFulfillmentStockComparisonView,
+    AdminCartFulfillmentAuditReportView,
+    AdminFulfillmentReadinessReportView,
+    AdminFulfillmentRolloutPrepareView,
+    AdminFulfillmentReservationReconcileView,
+)
 from vendors.views.categories import VendorCategoryListCreateView, VendorSubcategoryCreateView
 from products.views.catalog_views import (
     AdminApproveVendorProductView,
@@ -91,6 +104,17 @@ __all__ = [
     'AdminVendorPayoutScheduleView',
     'AdminVendorPayoutSendPaymentView',
     'AdminVendorPayoutForcePaidView',
+    'AdminFulfillmentNodeListCreateView',
+    'AdminFulfillmentNodeDetailView',
+    'AdminFulfillmentNodeServiceAreaListCreateView',
+    'AdminFulfillmentNodeServiceAreaDetailView',
+    'AdminFulfillmentNodeInventoryListCreateView',
+    'AdminFulfillmentNodeInventoryDetailView',
+    'AdminFulfillmentStockComparisonView',
+    'AdminCartFulfillmentAuditReportView',
+    'AdminFulfillmentReadinessReportView',
+    'AdminFulfillmentRolloutPrepareView',
+    'AdminFulfillmentReservationReconcileView',
     'VendorCategoryListCreateView',
     'VendorSubcategoryCreateView',
     'VendorWalletTransactionListView',

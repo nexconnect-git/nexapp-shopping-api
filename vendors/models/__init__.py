@@ -8,6 +8,13 @@ from .vendor_audit_log import VendorAuditLog, AUDIT_ACTION_CHOICES
 from .vendor_review import VendorReview
 from .vendor_payout import VendorPayout, DeliveryPartnerPayout, PAYOUT_STATUS_CHOICES
 from .vendor_wallet import VendorWalletTransaction
+from .fulfillment import (
+    FulfillmentNode,
+    FulfillmentNodeInventory,
+    FulfillmentNodeServiceArea,
+    FULFILLMENT_NODE_STATUS_CHOICES,
+    FULFILLMENT_NODE_TYPE_CHOICES,
+)
 
 __all__ = [
     'Vendor',
@@ -21,4 +28,7 @@ __all__ = [
     'VendorPayout',
     'DeliveryPartnerPayout',
     'VendorWalletTransaction',
+    'FulfillmentNode',
+    'FulfillmentNodeServiceArea',
+    'FulfillmentNodeInventory',
 ]

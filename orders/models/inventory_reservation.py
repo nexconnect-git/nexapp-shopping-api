@@ -5,7 +5,7 @@ from django.db import models
 from django.utils import timezone
 
 from products.models import Product
-from vendors.models import Vendor
+from vendors.models import FulfillmentNode, Vendor
 
 
 class InventoryReservation(models.Model):
@@ -53,6 +53,13 @@ class InventoryReservation(models.Model):
     vendor = models.ForeignKey(
         Vendor,
         on_delete=models.PROTECT,
+        related_name="inventory_reservations",
+    )
+    fulfillment_node = models.ForeignKey(
+        FulfillmentNode,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name="inventory_reservations",
     )
     quantity = models.PositiveIntegerField()

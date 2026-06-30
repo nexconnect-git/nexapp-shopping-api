@@ -5,6 +5,13 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 
 from accounts.permissions import IsApprovedVendor
 from helpers.cache_helpers import cached_api_response
+from backend.actions.customer_flow.fulfillment_filters import (
+    active_fulfillment_node_for_request,
+    filter_products_for_fulfillment_node,
+    filter_products_for_serviceable_vendors,
+    request_address_from_query,
+    should_enforce_fulfillment_node_for_request,
+)
 from products.serializers.product_serializers import ProductSerializer, ProductListSerializer
 from products.serializers.image_serializers import ProductImageSerializer
 from products.data.product_repository import ProductRepository
@@ -27,7 +34,7 @@ class ProductListView(generics.ListAPIView):
         )
 
     def get_queryset(self):
-        return ProductRepository.filter(
+        queryset = ProductRepository.filter(
             search=self.request.query_params.get("search"),
             category=self.request.query_params.get("category"),
             vendor=self.request.query_params.get("vendor"),
@@ -35,6 +42,7 @@ class ProductListView(generics.ListAPIView):
             max_price=self.request.query_params.get("max_price"),
             is_available=True
         )
+        return _filter_customer_products_for_request(self.request, queryset)
 
 class FeaturedProductsView(generics.ListAPIView):
     permission_classes = [AllowAny]
@@ -50,7 +58,8 @@ class FeaturedProductsView(generics.ListAPIView):
         )
 
     def get_queryset(self):
-        return ProductRepository.get_featured()
+        queryset = ProductRepository.get_featured()
+        return _filter_customer_products_for_request(self.request, queryset)
 
 class ProductDetailView(generics.RetrieveAPIView):
     permission_classes = [AllowAny]
@@ -66,7 +75,20 @@ class ProductDetailView(generics.RetrieveAPIView):
         )
 
     def get_queryset(self):
-        return ProductRepository.get_all()
+        queryset = ProductRepository.get_all()
+        return _filter_customer_products_for_request(self.request, queryset)
+
+
+def _filter_customer_products_for_request(request, queryset):
+    fulfillment_node = active_fulfillment_node_for_request(request)
+    if fulfillment_node:
+        return filter_products_for_fulfillment_node(queryset, fulfillment_node)
+    if should_enforce_fulfillment_node_for_request(request):
+        return queryset.none()
+    address = request_address_from_query(request)
+    if address:
+        return filter_products_for_serviceable_vendors(queryset, address)
+    return queryset
 
 class VendorProductImagesView(APIView):
     permission_classes = [IsAuthenticated, IsApprovedVendor]

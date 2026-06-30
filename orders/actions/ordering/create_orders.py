@@ -20,6 +20,7 @@ from orders.actions.checkout import (
     decimal_money,
     public_price_breakup,
     validate_cod_confirmation,
+    validate_cart_fulfillment_lock,
     validate_delivery_address,
     validate_schedule_slot,
     validate_single_vendor_cart,
@@ -41,6 +42,7 @@ from orders.serializers import IssueMessageSerializer
 from products.actions.inventory import DecreaseStockAction
 from products.data.product_repository import ProductRepository
 from products.models import Product
+from vendors.models import FulfillmentNodeInventory
 from vendors.realtime import broadcast_order_event
 
 from orders.actions.base import BaseAction
@@ -93,6 +95,8 @@ class CreateOrdersFromCartAction(BaseAction):
                 raise ValueError(f"'{product.name}' is no longer available for ordering.")
             item.product = product
 
+        validate_cart_fulfillment_lock(cart, cart_items)
+
         coupon = None
         if coupon_code:
             now = timezone.now()
@@ -141,6 +145,17 @@ class CreateOrdersFromCartAction(BaseAction):
             validate_schedule_slot(scheduled_for, vendor, vendor_items[vendor])
 
         total_coupon_discount = coupon.calculate_discount(cart_total) if coupon else Decimal("0")
+        fulfillment_node = cart.fulfillment_node
+        fulfillment_inventory_by_product = {}
+        if fulfillment_node:
+            fulfillment_inventory_by_product = {
+                inventory.product_id: inventory
+                for inventory in FulfillmentNodeInventory.objects.select_for_update()
+                .filter(
+                    node=fulfillment_node,
+                    product_id__in=[item.product_id for item in cart_items],
+                )
+            }
 
         wallet_amount = max(Decimal("0"), wallet_amount)
         if wallet_amount > Decimal("0"):
@@ -269,6 +284,9 @@ class CreateOrdersFromCartAction(BaseAction):
             order = Order.objects.create(
                 customer=user,
                 vendor=vendor,
+                fulfillment_node=fulfillment_node,
+                fulfillment_promise_id=cart.fulfillment_promise_id,
+                fulfillment_promise_expires_at=cart.fulfillment_promise_expires_at,
                 delivery_address=delivery_address,
                 payment_method=payment_method,
                 subtotal=subtotal,
@@ -305,6 +323,7 @@ class CreateOrdersFromCartAction(BaseAction):
                     order=order,
                     product=item.product,
                     vendor=item.product.vendor,
+                    fulfillment_node=fulfillment_node,
                     quantity=item.quantity,
                     price_at_reservation=item.product.price,
                     reserved_until=InventoryReservation.default_expiry(),
@@ -314,6 +333,7 @@ class CreateOrdersFromCartAction(BaseAction):
                     product=item.product,
                     catalog_product=item.product.catalog_product,
                     vendor=item.product.vendor,
+                    fulfillment_node=fulfillment_node,
                     product_name=item.product.name,
                     product_brand=item.product.brand,
                     product_unit=item.product.unit,
@@ -325,6 +345,22 @@ class CreateOrdersFromCartAction(BaseAction):
                     quantity=item.quantity,
                     subtotal=item.product.price * item.quantity,
                 )
+                node_inventory = fulfillment_inventory_by_product.get(item.product_id)
+                if node_inventory:
+                    if not node_inventory.is_available or node_inventory.sellable_stock < item.quantity:
+                        raise ValueError({
+                            "code": "fulfillment_node_stock_unavailable",
+                            "error": (
+                                f"'{item.product.name}' only has {node_inventory.sellable_stock} unit(s) "
+                                "available from the selected fulfillment node."
+                            ),
+                            "product_id": str(item.product_id),
+                            "available": node_inventory.sellable_stock,
+                        })
+                    node_inventory.stock = max(0, node_inventory.stock - item.quantity)
+                    if node_inventory.stock <= 0:
+                        node_inventory.is_available = False
+                    node_inventory.save(update_fields=["stock", "is_available", "updated_at"])
                 decrease_stock.execute(str(item.product.pk), item.quantity)
                 reservation.order_item = order_item
                 reservation.save(update_fields=["order_item", "updated_at"])
@@ -367,6 +403,17 @@ class CreateOrdersFromCartAction(BaseAction):
                 raise ValueError("Coupon usage limit reached.")
 
         cart.items.all().delete()
+        cart.fulfillment_node = None
+        cart.fulfillment_promise_id = ""
+        cart.fulfillment_promise_expires_at = None
+        cart.fulfillment_locked_at = None
+        cart.save(update_fields=[
+            "fulfillment_node",
+            "fulfillment_promise_id",
+            "fulfillment_promise_expires_at",
+            "fulfillment_locked_at",
+            "updated_at",
+        ])
 
         if wallet_amount > Decimal("0") and created_orders:
             order_refs = ", ".join(o.order_number for o in created_orders)

@@ -31,7 +31,7 @@ class CategoryRepository:
         return Category.objects.filter(is_active=True, parent__isnull=True)
 
     @staticmethod
-    def get_available_customer_category_ids(vendor_id=None, address=None) -> set:
+    def get_available_customer_category_ids(vendor_id=None, address=None, fulfillment_node=None) -> set:
         """Return category ids that have orderable customer products for the optional store/location."""
         products = Product.objects.filter(
             vendor__status="approved",
@@ -43,6 +43,14 @@ class CategoryRepository:
 
         if vendor_id:
             products = products.filter(vendor_id=vendor_id)
+
+        if fulfillment_node:
+            products = products.filter(
+                fulfillment_inventory__node=fulfillment_node,
+                fulfillment_inventory__is_available=True,
+                fulfillment_inventory__stock__gt=0,
+                fulfillment_inventory__reserved_stock__lt=models.F("fulfillment_inventory__stock"),
+            )
 
         if address:
             vendor_ids = products.values_list("vendor_id", flat=True).distinct()

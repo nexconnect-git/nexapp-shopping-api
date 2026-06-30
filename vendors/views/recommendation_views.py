@@ -4,6 +4,10 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from backend.actions.customer_flow.fulfillment_filters import (
+    active_fulfillment_node_for_request,
+    filter_products_for_fulfillment_node,
+)
 from helpers.cache_helpers import cached_api_response
 from orders.models import OrderItem
 from products.data.product_repository import ProductRepository
@@ -36,6 +40,12 @@ class VendorRecommendationsView(APIView):
             category__is_active=True,
             category__show_in_customer_ui=True,
         ).select_related('category')
+        fulfillment_node = active_fulfillment_node_for_request(request)
+        if fulfillment_node:
+            if fulfillment_node.vendor_id and str(fulfillment_node.vendor_id) != str(vendor.id):
+                base_queryset = base_queryset.none()
+            else:
+                base_queryset = filter_products_for_fulfillment_node(base_queryset, fulfillment_node)
         previous_ids = self._previous_product_ids(request, vendor)
         selected = self._selected_products(base_queryset, previous_ids)
         return Response({

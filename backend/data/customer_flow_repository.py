@@ -24,7 +24,13 @@ class CustomerFlowRepository:
                 select_related=['vendor', 'category', 'catalog_product'],
                 prefetch_related=['images', 'catalog_product__images'],
             )
-            .filter(category__is_active=True, category__show_in_customer_ui=True)
+            .filter(
+                vendor__status='approved',
+                vendor__is_open=True,
+                vendor__is_accepting_orders=True,
+                category__is_active=True,
+                category__show_in_customer_ui=True,
+            )
             .order_by('-is_featured', '-total_orders', '-average_rating', 'name')
         )
 
@@ -33,7 +39,11 @@ class CustomerFlowRepository:
         products = ProductRepository.get_all(
             select_related=['vendor', 'category', 'catalog_product'],
             prefetch_related=['images', 'catalog_product__images'],
-        ).filter(vendor__status='approved', vendor__is_accepting_orders=True)
+        ).filter(
+            vendor__status='approved',
+            vendor__is_open=True,
+            vendor__is_accepting_orders=True,
+        )
 
         if query:
             products = products.filter(

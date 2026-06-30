@@ -5,6 +5,8 @@ from vendors.actions.admin import ReviewVendorKycAction, UpdateVendorStatusActio
 from vendors.actions.analytics import VendorAnalyticsAction
 from vendors.actions.emails import SendVendorSelfRegistrationEmailsAction, SendVendorWelcomeEmailAction
 from vendors.actions.operations import VendorOperationsSummaryAction, VendorLiveOrdersAction
+from vendors.actions.fulfillment_backfill import BackfillVendorFulfillmentNodesAction
+from vendors.actions.fulfillment_readiness import FulfillmentReadinessAuditAction
 
 __all__ = [
     'BaseAction',
@@ -27,4 +29,6 @@ __all__ = [
     'SendVendorWelcomeEmailAction',
     'VendorOperationsSummaryAction',
     'VendorLiveOrdersAction',
+    'BackfillVendorFulfillmentNodesAction',
+    'FulfillmentReadinessAuditAction',
 ]

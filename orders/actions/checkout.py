@@ -10,6 +10,7 @@ from accounts.models import Address
 from helpers.delivery_quotes import DeliveryServiceabilityError, FarDeliveryConfirmationRequired, quote_vendor_delivery
 from helpers.vendor_hours import get_vendor_availability
 from orders.models import Cart, Coupon, CouponUsage, PlatformSetting
+from vendors.models import FulfillmentNodeInventory
 from vendors.models import VendorHoliday
 
 
@@ -93,6 +94,52 @@ def validate_vendor_minimum_order(vendor_items: dict) -> None:
                 "minimum_order_amount": str(minimum),
                 "current_subtotal": str(decimal_money(subtotal)),
                 "remaining": str(remaining),
+            })
+
+
+def validate_cart_fulfillment_lock(cart: Cart, cart_items: Iterable) -> None:
+    node = cart.fulfillment_node
+    if not node:
+        return
+    if cart.fulfillment_promise_expires_at and cart.fulfillment_promise_expires_at < timezone.now():
+        raise ValueError({
+            "code": "fulfillment_promise_expired",
+            "error": "Delivery promise expired. Refresh availability before checkout.",
+            "fulfillment_node_id": str(node.id),
+        })
+    if node.status != "active" or not node.is_accepting_orders:
+        raise ValueError({
+            "code": "fulfillment_node_unavailable",
+            "error": "Selected fulfillment node is no longer accepting orders.",
+            "fulfillment_node_id": str(node.id),
+        })
+    for item in cart_items:
+        if node.vendor_id and str(item.product.vendor_id) != str(node.vendor_id):
+            raise ValueError({
+                "code": "cart_fulfillment_node_mismatch",
+                "error": "Cart contains items outside the selected fulfillment node.",
+                "fulfillment_node_id": str(node.id),
+            })
+    inventory_by_product = {
+        inventory.product_id: inventory
+        for inventory in FulfillmentNodeInventory.objects.filter(
+            node=node,
+            product_id__in=[item.product_id for item in cart_items],
+        )
+    }
+    for item in cart_items:
+        inventory = inventory_by_product.get(item.product_id)
+        if not inventory:
+            continue
+        if not inventory.is_available or inventory.sellable_stock < item.quantity:
+            raise ValueError({
+                "code": "fulfillment_node_stock_unavailable",
+                "error": (
+                    f"'{item.product.name}' only has {inventory.sellable_stock} unit(s) "
+                    "available from the selected fulfillment node."
+                ),
+                "product_id": str(item.product_id),
+                "available": inventory.sellable_stock,
             })
 
 
@@ -221,6 +268,7 @@ def calculate_checkout_preview(
     if require_cod_confirmation:
         validate_cod_confirmation(payment_method, cod_upi_confirmed)
     _cart, cart_items = cart_items_for_user(user)
+    validate_cart_fulfillment_lock(_cart, cart_items)
     vendor_items = group_items_by_vendor(cart_items)
     validate_single_vendor_cart(vendor_items)
     validate_vendor_minimum_order(vendor_items)

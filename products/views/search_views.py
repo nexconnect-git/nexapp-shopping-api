@@ -6,6 +6,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import Address
+from backend.actions.customer_flow.fulfillment_filters import (
+    active_fulfillment_node_for_request,
+    filter_products_for_fulfillment_node,
+    should_enforce_fulfillment_node_for_request,
+)
 from helpers.delivery_quotes import quote_vendor_delivery
 from helpers.cache_helpers import cached_api_response
 from products.models import Product
@@ -95,6 +100,9 @@ class ProductSearchByLocationView(APIView):
         if not terms:
             return Response({"count": 0, "results": []})
         address = _request_address(request)
+        fulfillment_node = active_fulfillment_node_for_request(request)
+        if not fulfillment_node and should_enforce_fulfillment_node_for_request(request):
+            return Response({"count": 0, "results": []})
         products = (
             Product.objects
             .filter(
@@ -105,6 +113,7 @@ class ProductSearchByLocationView(APIView):
             .select_related("vendor", "category")
             .filter(_product_search_q(terms))
         )
+        products = filter_products_for_fulfillment_node(products, fulfillment_node)
         store_matches = {}
         store_vendors = {}
         for product in products:

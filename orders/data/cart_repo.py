@@ -35,5 +35,16 @@ class CartRepository:
         try:
             cart = Cart.objects.get(user=user)
             cart.items.all().delete()
+            cart.fulfillment_node = None
+            cart.fulfillment_promise_id = ""
+            cart.fulfillment_promise_expires_at = None
+            cart.fulfillment_locked_at = None
+            cart.save(update_fields=[
+                "fulfillment_node",
+                "fulfillment_promise_id",
+                "fulfillment_promise_expires_at",
+                "fulfillment_locked_at",
+                "updated_at",
+            ])
         except Cart.DoesNotExist:
             pass

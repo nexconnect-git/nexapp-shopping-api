@@ -5,7 +5,7 @@ from accounts.models import User, Address
 from products.models import CatalogProduct
 from helpers.upload_paths import UserDateUploadPath
 from products.models import Product
-from vendors.models import Vendor
+from vendors.models import FulfillmentNode, Vendor
 
 
 class Order(models.Model):
@@ -23,6 +23,15 @@ class Order(models.Model):
     order_number = models.CharField(max_length=20, unique=True, editable=False)
     customer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='orders')
     vendor = models.ForeignKey(Vendor, on_delete=models.CASCADE, related_name='orders')
+    fulfillment_node = models.ForeignKey(
+        FulfillmentNode,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='orders',
+    )
+    fulfillment_promise_id = models.CharField(max_length=160, blank=True, default='')
+    fulfillment_promise_expires_at = models.DateTimeField(null=True, blank=True)
     delivery_address = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True)
     delivery_partner = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True, related_name='deliveries'
@@ -122,6 +131,13 @@ class OrderItem(models.Model):
     )
     vendor = models.ForeignKey(
         Vendor,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='order_item_snapshots',
+    )
+    fulfillment_node = models.ForeignKey(
+        FulfillmentNode,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

@@ -13,6 +13,7 @@ from backend.views import (
 )
 from orders.views import (
     AddToCartView,
+    CartFulfillmentEventView,
     CartView,
     CheckoutPreviewView,
     ClearCartView,
@@ -21,6 +22,7 @@ from orders.views import (
     OrderListView,
     OrderTrackingView,
     ReorderView,
+    RefreshCartFulfillmentView,
     ReplaceCartView,
     SubmitOrderRatingView,
     UpdateCartItemView,
@@ -49,6 +51,8 @@ urlpatterns = [
     path("cart/items/", AddToCartView.as_view(), name="customer-cart-add"),
     path("cart/items/<uuid:pk>/", UpdateCartItemView.as_view(), name="customer-cart-item"),
     path("cart/replace/", ReplaceCartView.as_view(), name="customer-cart-replace"),
+    path("cart/fulfillment/", RefreshCartFulfillmentView.as_view(), name="customer-cart-fulfillment-refresh"),
+    path("cart/fulfillment/events/", CartFulfillmentEventView.as_view(), name="customer-cart-fulfillment-event"),
     path("cart/clear/", ClearCartView.as_view(), name="customer-cart-clear"),
     path("cart/suggestions/", CustomerCartSuggestionsView.as_view(), name="customer-cart-suggestions"),
     path("cart/apply-best-coupon/", CustomerBestCouponView.as_view(), name="customer-cart-best-coupon"),

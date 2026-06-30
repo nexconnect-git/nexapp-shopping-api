@@ -7,6 +7,16 @@ from products.models import Product
 class Cart(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='cart')
+    fulfillment_node = models.ForeignKey(
+        'vendors.FulfillmentNode',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='carts',
+    )
+    fulfillment_promise_id = models.CharField(max_length=160, blank=True, default='')
+    fulfillment_promise_expires_at = models.DateTimeField(null=True, blank=True)
+    fulfillment_locked_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

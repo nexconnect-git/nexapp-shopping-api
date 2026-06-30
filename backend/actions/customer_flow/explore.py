@@ -10,6 +10,7 @@ from backend.actions.customer_flow.query_helpers import (
 )
 from backend.data import CustomerFlowRepository
 from helpers.delivery_quotes import quote_vendor_delivery
+from helpers.vendor_hours import is_vendor_open_now
 from orders.serializers.coupon_serializers import CouponSerializer
 from products.data.category_repository import CategoryRepository
 from products.serializers import CategorySerializer, ProductListSerializer
@@ -21,16 +22,29 @@ class GetCustomerExploreAction(CustomerLocationMixin):
 
     def execute(self, request) -> dict:
         address = self.request_address(request)
+        serviceability = self.serviceability_payload(request)
         query = (request.query_params.get('q') or request.query_params.get('search') or '').strip()
         category = (request.query_params.get('category') or '').strip()
         products = self._product_queryset(query=query, category=category)
         stores = self._store_results(request, address, query=query, category=category)
         categories = self._category_queryset(query=query, category=category)
-        offers = self.repository.active_coupons()[:8]
+        if not serviceability.get('is_serviceable'):
+            stores = []
+            products = products.none()
+            categories = categories.none()
+        elif address:
+            store_ids = [store.get('id') for store in stores if store.get('id')]
+            if store_ids:
+                products = products.filter(vendor_id__in=store_ids)
+            else:
+                products = products.none()
+                categories = categories.none()
+        offers = self.repository.active_coupons()[:8] if serviceability.get('is_serviceable') else []
         products = self._apply_filters(products, request)
 
         return {
             'query': query,
+            'serviceability': serviceability,
             'categories': CategorySerializer(categories[:12], many=True, context={'request': request}).data,
             'products': ProductListSerializer(products[:24], many=True, context={'request': request}).data,
             'stores': stores[:12],
@@ -69,6 +83,8 @@ class GetCustomerExploreAction(CustomerLocationMixin):
         )
         cards = []
         for store in stores:
+            if not is_vendor_open_now(store):
+                continue
             payload = VendorListSerializer(store, context={'request': request}).data
             if address:
                 try:

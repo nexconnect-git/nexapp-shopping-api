@@ -22,6 +22,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
             "product",
             "catalog_product",
             "vendor",
+            "fulfillment_node",
             "product_name",
             "product_brand",
             "product_unit",
@@ -58,6 +59,7 @@ class OrderSerializer(serializers.ModelSerializer):
     delivery_address = AddressSerializer(read_only=True)
     customer_name = serializers.CharField(source="customer.get_full_name", read_only=True)
     vendor_name = serializers.CharField(source="vendor.store_name", read_only=True)
+    fulfillment_node_name = serializers.CharField(source="fulfillment_node.name", read_only=True)
     vendor_info = serializers.SerializerMethodField()
     delivery_partner_info = serializers.SerializerMethodField()
     assignment_status = serializers.SerializerMethodField()
@@ -75,7 +77,9 @@ class OrderSerializer(serializers.ModelSerializer):
         model = Order
         fields = [
             "id", "order_number", "customer", "customer_name", "vendor",
-            "vendor_name", "vendor_info", "delivery_address", "delivery_partner",
+            "vendor_name", "vendor_info", "fulfillment_node", "fulfillment_node_name",
+            "fulfillment_promise_id", "fulfillment_promise_expires_at",
+            "delivery_address", "delivery_partner",
             "delivery_partner_info", "status", "normalized_status", "payment_status",
             "delivery_status", "assignment_status", "invoice_id",
             "has_rating", "vendor_rating", "vendor_comment", "delivery_rating", "delivery_comment",

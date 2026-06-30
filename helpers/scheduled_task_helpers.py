@@ -47,6 +47,14 @@ TASK_REGISTRY = {
         'icon': 'event_available',
         'category': 'operations',
     },
+    'reconcile_inventory_reservations': {
+        'label': 'Reconcile Inventory Reservations',
+        'description': 'Expire stale reservations and release stock for failed payment flows.',
+        'func': 'notifications.scheduled_tasks.reconcile_inventory_reservations',
+        'params': ['failed_payment_age_minutes'],
+        'icon': 'inventory',
+        'category': 'operations',
+    },
 }
 
 

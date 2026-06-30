@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.db import models
 from django.db.models import Q
 from rest_framework.pagination import PageNumberPagination
 
@@ -37,7 +38,7 @@ def build_request_address(request) -> Address | None:
         return None
 
 
-def matching_product_names(vendor, product_query: str) -> list[str]:
+def matching_product_names(vendor, product_query: str, fulfillment_node=None) -> list[str]:
     if not product_query:
         return []
     search_query = Q()
@@ -57,15 +58,29 @@ def matching_product_names(vendor, product_query: str) -> list[str]:
         category__is_active=True,
         category__show_in_customer_ui=True,
     ).filter(search_query)
+    if fulfillment_node:
+        products = products.filter(
+            fulfillment_inventory__node=fulfillment_node,
+            fulfillment_inventory__is_available=True,
+            fulfillment_inventory__stock__gt=0,
+            fulfillment_inventory__reserved_stock__lt=models.F("fulfillment_inventory__stock"),
+        )
     return list(products.values_list('name', flat=True).distinct()[:3])
 
 
-def serialize_vendor_cards(request, vendors, address: Address | None, product_query='', previous_vendor_ids=None) -> list[dict]:
+def serialize_vendor_cards(
+    request,
+    vendors,
+    address: Address | None,
+    product_query='',
+    previous_vendor_ids=None,
+    fulfillment_node=None,
+) -> list[dict]:
     cards = []
     previous_vendor_ids = previous_vendor_ids or set()
     for vendor in vendors:
         payload = VendorListSerializer(vendor, context={'request': request}).data
-        payload['matched_products_preview'] = matching_product_names(vendor, product_query)
+        payload['matched_products_preview'] = matching_product_names(vendor, product_query, fulfillment_node)
 
         if address:
             quote = quote_vendor_delivery(vendor, address)

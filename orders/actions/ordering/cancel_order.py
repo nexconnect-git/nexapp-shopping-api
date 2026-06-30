@@ -2,16 +2,15 @@ import logging
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import F
 from django.utils import timezone
 
 from accounts.actions.wallet_actions import CreditWalletAction
 from backend.events import order_cancelled
 from orders.actions.base import BaseAction
+from orders.actions.inventory_reservations import ReservationInventoryAction
 from orders.actions.refund_actions import IssueRazorpayRefundAction
-from orders.models import InventoryReservation, Order, OrderTracking
+from orders.models import Order, OrderTracking
 from orders.models.setting import PlatformSetting
-from products.models import Product
 
 
 logger = logging.getLogger(__name__)
@@ -46,29 +45,11 @@ class CancelOrderAction(BaseAction):
         order.status = 'cancelled'
         order.save(update_fields=['status', 'updated_at'])
         OrderTracking.objects.create(order=order, status='cancelled', description='Order cancelled by customer.')
-        self._restore_inventory(order)
-        self._release_reservations(order)
+        ReservationInventoryAction().release_order(order, reason="cancelled")
         self._refund_wallet(order)
         self._refund_razorpay(order)
         order_cancelled.send(sender=Order, order=order)
         return order
-
-    def _restore_inventory(self, order):
-        for item in order.items.select_related('product').all():
-            if item.product:
-                Product.objects.filter(pk=item.product.pk).update(stock=F('stock') + item.quantity)
-                if item.product.status == 'sold_out':
-                    Product.objects.filter(pk=item.product.pk).update(status='active')
-
-    def _release_reservations(self, order):
-        InventoryReservation.objects.filter(
-            order=order,
-            status=InventoryReservation.STATUS_COMMITTED,
-        ).update(
-            status=InventoryReservation.STATUS_RELEASED,
-            released_at=timezone.now(),
-            updated_at=timezone.now(),
-        )
 
     def _refund_wallet(self, order):
         if order.wallet_discount <= Decimal('0'):

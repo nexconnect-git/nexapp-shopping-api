@@ -1,15 +1,13 @@
 import logging
 
 from django.db import transaction
-from django.db.models import F
-from django.utils import timezone
 
 from accounts.actions.loyalty_actions import EarnLoyaltyPointsAction
 from backend.events import order_status_updated
 from orders.actions.base import BaseAction
+from orders.actions.inventory_reservations import ReservationInventoryAction
 from orders.actions.refund_actions import IssueRazorpayRefundAction
-from orders.models import InventoryReservation, Order, OrderTracking
-from products.models import Product
+from orders.models import Order, OrderTracking
 
 
 logger = logging.getLogger(__name__)
@@ -35,8 +33,7 @@ class AdminUpdateOrderStatusAction(BaseAction):
         order.save(update_fields=['status', 'updated_at'])
 
         if new_status == 'cancelled' and old_status != 'cancelled':
-            self._restore_inventory(order)
-            self._release_reservations(order)
+            ReservationInventoryAction().release_order(order, reason="cancelled")
             self._refund_razorpay(order)
 
         OrderTracking.objects.create(
@@ -50,23 +47,6 @@ class AdminUpdateOrderStatusAction(BaseAction):
             self._settle_delivered_order(order)
 
         return order
-
-    def _restore_inventory(self, order):
-        for item in order.items.select_related('product').all():
-            if item.product:
-                Product.objects.filter(pk=item.product.pk).update(stock=F('stock') + item.quantity)
-                if item.product.status == 'sold_out':
-                    Product.objects.filter(pk=item.product.pk).update(status='active')
-
-    def _release_reservations(self, order):
-        InventoryReservation.objects.filter(
-            order=order,
-            status=InventoryReservation.STATUS_COMMITTED,
-        ).update(
-            status=InventoryReservation.STATUS_RELEASED,
-            released_at=timezone.now(),
-            updated_at=timezone.now(),
-        )
 
     def _refund_razorpay(self, order):
         if order.payment_method != 'razorpay' or not order.is_payment_verified or order.razorpay_refund_id:

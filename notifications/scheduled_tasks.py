@@ -61,6 +61,18 @@ def generate_delivery_payouts(payout_id: str):
 
 
 @job('default')
+def reconcile_inventory_reservations(failed_payment_age_minutes: int = 60):
+    """Expire stale reservation rows and release stock from failed payment flows."""
+    from orders.actions.inventory_reservations import ReconcileInventoryReservationsAction
+
+    result = ReconcileInventoryReservationsAction().execute(
+        failed_payment_age_minutes=failed_payment_age_minutes,
+    )
+    logger.info("[reconcile_inventory_reservations] %s", result)
+    return result
+
+
+@job('default')
 def remind_unverified_payouts():
     """
     Run every 12h. Sends:
