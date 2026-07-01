@@ -10,6 +10,7 @@ from orders.actions.payment_actions import (
     VerifyRazorpayPaymentAction,
 )
 from orders.actions.customer_content_actions import GetCustomerContentConfigAction
+from orders.actions.customer_recommendations import RefreshCustomerRecommendationsAction
 
 __all__ = [
     'BaseAction',
@@ -20,4 +21,5 @@ __all__ = [
     'CreateRazorpayOrderAction',
     'VerifyRazorpayPaymentAction',
     'GetCustomerContentConfigAction',
+    'RefreshCustomerRecommendationsAction',
 ]

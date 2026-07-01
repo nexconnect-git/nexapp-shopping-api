@@ -55,6 +55,14 @@ TASK_REGISTRY = {
         'icon': 'inventory',
         'category': 'operations',
     },
+    'refresh_customer_recommendations': {
+        'label': 'Refresh Customer Recommendations',
+        'description': 'Precompute product, deal, and store recommendations for customer-app home and discovery.',
+        'func': 'orders.scheduled_tasks.refresh_customer_recommendations',
+        'params': ['user_id', 'limit'],
+        'icon': 'auto_awesome',
+        'category': 'recommendations',
+    },
 }
 
 

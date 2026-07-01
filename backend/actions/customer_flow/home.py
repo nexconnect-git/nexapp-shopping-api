@@ -4,7 +4,6 @@ from backend.actions.customer_flow.location import CustomerLocationMixin
 from backend.actions.customer_flow.orders import GetCustomerActiveOrderAction
 from backend.actions.customer_flow.personalization import GetCustomerBuyAgainAction
 from backend.data import CustomerFlowRepository
-from backend.services import RecommendationServiceClient
 from helpers.delivery_quotes import quote_vendor_delivery
 from helpers.vendor_hours import is_vendor_open_now
 from products.data.category_repository import CategoryRepository
@@ -21,6 +20,8 @@ class GetCustomerFlowHomeAction(CustomerLocationMixin):
         serviceability = self.serviceability_payload(request)
         fulfillment_node_payload = serviceability.get('fulfillment_node') or {}
         fulfillment_node_id = fulfillment_node_payload.get('id')
+        fulfillment_node_type = fulfillment_node_payload.get('type')
+        inventory_node_id = fulfillment_node_id if fulfillment_node_type != 'vendor_store' else None
         fulfillment_vendor_id = fulfillment_node_payload.get('vendor_id')
         is_serviceable = serviceability.get('is_serviceable')
         category_ids = CategoryRepository.get_available_customer_category_ids(
@@ -28,14 +29,18 @@ class GetCustomerFlowHomeAction(CustomerLocationMixin):
             fulfillment_node=fulfillment_node_id,
         )
         categories = CategoryRepository.get_customer_visible(category_ids=category_ids)
-        stores = self._ml_ranked_stores(request, self._nearby_stores(request, address))
+        recommendation_snapshot = self.repository.recommendation_snapshot(request.user)
+        stores = self._snapshot_ranked_stores(
+            recommendation_snapshot,
+            self._nearby_stores(request, address),
+        )
         if fulfillment_node_id:
             stores = [
                 store for store in stores
                 if fulfillment_vendor_id and str(store.get('id')) == str(fulfillment_vendor_id)
             ]
         store_ids = [store.get('id') for store in stores]
-        products = self._products(store_ids=store_ids, fulfillment_node_id=fulfillment_node_id)
+        products = self._products(store_ids=store_ids, fulfillment_node_id=inventory_node_id)
         if not serviceability.get('is_serviceable'):
             products = products.none()
             categories = categories.none()
@@ -46,18 +51,16 @@ class GetCustomerFlowHomeAction(CustomerLocationMixin):
         if not is_serviceable:
             buy_again = []
         nearby_stores = stores[:12]
-        recommended_queryset = self._ml_ranked_products(
-            request=request,
+        recommended_queryset = self._snapshot_ranked_products(
+            snapshot_ids=(recommendation_snapshot.recommended_product_ids if recommendation_snapshot else []),
             products=products,
-            recommendation_type='recommended',
             fallback_queryset=products,
             limit=16,
         )
         flash_queryset = products.filter(compare_price__gt=0)
-        flash_queryset = self._ml_ranked_products(
-            request=request,
+        flash_queryset = self._snapshot_ranked_products(
+            snapshot_ids=(recommendation_snapshot.flash_deal_product_ids if recommendation_snapshot else []),
             products=products,
-            recommendation_type='flash_deals',
             fallback_queryset=flash_queryset,
             limit=12,
         )
@@ -78,6 +81,10 @@ class GetCustomerFlowHomeAction(CustomerLocationMixin):
             'banners': [],
             'coupons': coupon_cards,
             'hero': hero,
+            'recommendations_generated_at': (
+                recommendation_snapshot.generated_at.isoformat()
+                if recommendation_snapshot else None
+            ),
             'sections': [
                 self._section('categories', 'Shop by category', category_cards, 'category_grid'),
                 self._section('nearby_stores', 'Stores near you', nearby_stores, 'store_rail'),
@@ -138,18 +145,12 @@ class GetCustomerFlowHomeAction(CustomerLocationMixin):
             products = products.filter(vendor_id__in=store_ids)
         return products
 
-    def _ml_ranked_products(self, request, products, recommendation_type: str, fallback_queryset, limit: int):
-        ranked_items = RecommendationServiceClient().user_recommendations(
-            user_id=str(request.user.id) if getattr(request.user, 'is_authenticated', False) else None,
-            limit=max(limit * 3, limit),
-            recommendation_type=recommendation_type,
-            location=self._recommendation_location(request),
-        )
-        ranked_ids = [item['product_id'] for item in ranked_items if item.get('product_id')]
+    def _snapshot_ranked_products(self, snapshot_ids: list, products, fallback_queryset, limit: int):
+        ranked_ids = [str(product_id) for product_id in (snapshot_ids or []) if product_id]
         if not ranked_ids:
             return fallback_queryset[:limit]
 
-        candidate_queryset = fallback_queryset if recommendation_type == 'flash_deals' else products
+        candidate_queryset = fallback_queryset if fallback_queryset is not products else products
         allowed_products = {
             str(product.id): product
             for product in candidate_queryset.filter(id__in=ranked_ids)
@@ -167,15 +168,14 @@ class GetCustomerFlowHomeAction(CustomerLocationMixin):
             ranked_products.append(product)
         return ranked_products
 
-    def _ml_ranked_stores(self, request, stores: list[dict]) -> list[dict]:
+    def _snapshot_ranked_stores(self, snapshot, stores: list[dict]) -> list[dict]:
         if not stores:
             return stores
-        ranked_items = RecommendationServiceClient().store_recommendations(
-            user_id=str(request.user.id) if getattr(request.user, 'is_authenticated', False) else None,
-            limit=max(len(stores), 12),
-            location=self._recommendation_location(request),
-        )
-        ranked_ids = [item['store_id'] for item in ranked_items if item.get('store_id')]
+        ranked_ids = [
+            str(store_id)
+            for store_id in (getattr(snapshot, 'recommended_store_ids', []) or [])
+            if store_id
+        ]
         if not ranked_ids:
             return stores
 
@@ -196,12 +196,3 @@ class GetCustomerFlowHomeAction(CustomerLocationMixin):
             if str(store.get('id')) not in used_ids
         ])
         return ranked_stores
-
-    def _recommendation_location(self, request) -> dict:
-        return {
-            'lat': request.query_params.get('lat') or None,
-            'lng': request.query_params.get('lng') or None,
-            'city': request.query_params.get('city') or '',
-            'state': request.query_params.get('state') or '',
-            'postal_code': request.query_params.get('postal_code') or '',
-        }

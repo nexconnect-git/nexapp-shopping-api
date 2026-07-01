@@ -1,6 +1,7 @@
 from django.db.models import Q
 from django.utils import timezone
 
+from orders.data import CustomerRecommendationRepository
 from orders.models import Coupon, Order, OrderItem
 from products.data.product_repository import ProductRepository
 from vendors.models import Vendor
@@ -107,3 +108,7 @@ class CustomerFlowRepository:
             .order_by('-placed_at')
             .first()
         )
+
+    @staticmethod
+    def recommendation_snapshot(user):
+        return CustomerRecommendationRepository.get_for_user(user)

@@ -9,6 +9,7 @@ from backend.actions.customer_flow.fulfillment_filters import (
     filter_products_for_fulfillment_node,
 )
 from helpers.cache_helpers import cached_api_response
+from orders.data import CustomerRecommendationRepository
 from orders.models import OrderItem
 from products.data.product_repository import ProductRepository
 from products.models import Product
@@ -47,12 +48,15 @@ class VendorRecommendationsView(APIView):
             else:
                 base_queryset = filter_products_for_fulfillment_node(base_queryset, fulfillment_node)
         previous_ids = self._previous_product_ids(request, vendor)
-        selected = self._selected_products(base_queryset, previous_ids)
+        snapshot = CustomerRecommendationRepository.get_for_user(request.user)
+        personalized_ids = self._personalized_product_ids(snapshot, vendor)
+        selected = self._selected_products(base_queryset, previous_ids, personalized_ids)
         return Response({
             'store_id': str(vendor.id),
             'store_name': vendor.store_name,
-            'results': self._results(request, vendor, selected, previous_ids),
+            'results': self._results(request, vendor, selected, previous_ids, set(personalized_ids)),
             'recommended_categories': self._categories(base_queryset),
+            'recommendations_generated_at': snapshot.generated_at.isoformat() if snapshot else None,
         })
 
     def _previous_product_ids(self, request, vendor):
@@ -66,18 +70,67 @@ class VendorRecommendationsView(APIView):
             ).values_list('product_id', flat=True)
         )
 
-    def _selected_products(self, base_queryset, previous_ids):
-        previous = list(base_queryset.filter(id__in=previous_ids).order_by('-total_orders', '-average_rating')[:8])
-        featured = list(base_queryset.filter(is_featured=True).exclude(id__in=[product.id for product in previous]).order_by('-average_rating', '-total_orders')[:8])
-        popular = list(base_queryset.exclude(id__in=[product.id for product in previous + featured]).order_by('-total_orders', '-average_rating')[:12])
-        return (previous + featured + popular)[:16]
+    def _personalized_product_ids(self, snapshot, vendor):
+        if not snapshot:
+            return []
+        vendor_id = str(vendor.id)
+        metadata = snapshot.metadata or {}
+        store_map = metadata.get('store_product_ids') or {}
+        store_ids = store_map.get(vendor_id) or []
+        if store_ids:
+            return [str(product_id) for product_id in store_ids if product_id]
+        return [
+            str(product_id)
+            for product_id in [
+                *(snapshot.recommended_product_ids or []),
+                *(snapshot.flash_deal_product_ids or []),
+            ]
+            if product_id
+        ]
 
-    def _results(self, request, vendor, selected, previous_ids):
+    def _selected_products(self, base_queryset, previous_ids, personalized_ids):
+        personalized = self._products_in_ranked_order(base_queryset, personalized_ids)
+        used_ids = {product.id for product in personalized}
+        previous = list(
+            base_queryset.filter(id__in=previous_ids)
+            .exclude(id__in=used_ids)
+            .order_by('-total_orders', '-average_rating')[:8]
+        )
+        used_ids.update(product.id for product in previous)
+        featured = list(
+            base_queryset.filter(is_featured=True)
+            .exclude(id__in=used_ids)
+            .order_by('-average_rating', '-total_orders')[:8]
+        )
+        used_ids.update(product.id for product in featured)
+        popular = list(
+            base_queryset.exclude(id__in=used_ids)
+            .order_by('-total_orders', '-average_rating')[:12]
+        )
+        return (personalized + previous + featured + popular)[:16]
+
+    def _products_in_ranked_order(self, base_queryset, ranked_ids):
+        ranked_ids = [str(product_id) for product_id in (ranked_ids or []) if product_id]
+        if not ranked_ids:
+            return []
+        products_by_id = {
+            str(product.id): product
+            for product in base_queryset.filter(id__in=ranked_ids)
+        }
+        return [
+            products_by_id[product_id]
+            for product_id in ranked_ids
+            if product_id in products_by_id
+        ]
+
+    def _results(self, request, vendor, selected, previous_ids, personalized_ids):
         results = []
         hour = timezone.localtime(timezone.now()).hour
         time_reason = 'morning_pick' if 5 <= hour < 12 else 'evening_pick' if 17 <= hour < 22 else 'popular_now'
         for product in selected:
-            if product.id in previous_ids:
+            if str(product.id) in personalized_ids:
+                reason = 'picked_for_you'
+            elif product.id in previous_ids:
                 reason = 'previously_bought'
             elif product.is_featured:
                 reason = 'vendor_promoted'

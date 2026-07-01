@@ -8,7 +8,8 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from accounts.models import Address, User
-from orders.models import Cart, CartItem, Coupon, Order, PlatformSetting
+from orders.actions import RefreshCustomerRecommendationsAction
+from orders.models import Cart, CartItem, Coupon, CustomerRecommendationSnapshot, Order, PlatformSetting
 from products.models import CatalogProduct, Category, Product
 from vendors.models import Vendor
 
@@ -209,3 +210,82 @@ class CustomerFlowTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
         self.assertEqual(Order.objects.filter(customer=self.customer).count(), 1)
         self.assertFalse(CartItem.objects.filter(cart__user=self.customer).exists())
+
+    def test_home_uses_precomputed_recommendation_snapshot(self):
+        CustomerRecommendationSnapshot.objects.create(
+            user=self.customer,
+            recommended_product_ids=[str(self.product.id)],
+            flash_deal_product_ids=[str(self.product.id)],
+            recommended_store_ids=[str(self.vendor.id)],
+            metadata={"source": "test"},
+        )
+
+        response = self.client.get(
+            "/api/customer/home/",
+            {
+                "lat": str(self.address.latitude),
+                "lng": str(self.address.longitude),
+                "city": self.address.city,
+                "state": self.address.state,
+                "postal_code": self.address.postal_code,
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data["recommended_products"][0]["id"], str(self.product.id))
+        self.assertEqual(response.data["flash_deals"][0]["id"], str(self.product.id))
+        self.assertEqual(response.data["nearby_stores"][0]["id"], str(self.vendor.id))
+        self.assertIsNotNone(response.data["recommendations_generated_at"])
+
+    def test_refresh_customer_recommendations_creates_snapshot_without_ui_request(self):
+        result = RefreshCustomerRecommendationsAction().execute(user_id=str(self.customer.id), limit=8)
+
+        self.assertEqual(result["refreshed"], 1)
+        snapshot = CustomerRecommendationSnapshot.objects.get(user=self.customer)
+        self.assertIn(str(self.product.id), snapshot.recommended_product_ids)
+        self.assertIn(str(self.product.id), snapshot.flash_deal_product_ids)
+        self.assertIn(str(self.vendor.id), snapshot.recommended_store_ids)
+        self.assertIn(str(self.vendor.id), snapshot.metadata["store_product_ids"])
+
+    def test_store_recommendations_use_customer_taste_snapshot(self):
+        second_catalog_product = CatalogProduct.objects.create(
+            category=self.category,
+            name="Taste Match Apples",
+            slug="taste-match-apples",
+            brand="Nextou",
+            unit="1 kg",
+        )
+        second_product = Product.objects.create(
+            vendor=self.vendor,
+            catalog_product=second_catalog_product,
+            category=self.category,
+            name="Taste Match Apples",
+            slug="taste-match-apples",
+            description="Fresh apples",
+            price=Decimal("120.00"),
+            compare_price=Decimal("140.00"),
+            stock=10,
+            unit="1 kg",
+            status="active",
+            is_available=True,
+            approval_status=Product.APPROVAL_STATUS_APPROVED,
+        )
+        CustomerRecommendationSnapshot.objects.create(
+            user=self.customer,
+            recommended_product_ids=[str(self.product.id)],
+            flash_deal_product_ids=[str(second_product.id)],
+            recommended_store_ids=[str(self.vendor.id)],
+            metadata={
+                "source": "test",
+                "store_product_ids": {
+                    str(self.vendor.id): [str(second_product.id), str(self.product.id)],
+                },
+            },
+        )
+
+        response = self.client.get(f"/api/vendors/{self.vendor.id}/recommendations/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data["results"][0]["product"]["id"], str(second_product.id))
+        self.assertEqual(response.data["results"][0]["reason"], "picked_for_you")
+        self.assertIsNotNone(response.data["recommendations_generated_at"])

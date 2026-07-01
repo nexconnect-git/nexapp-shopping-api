@@ -10,6 +10,7 @@ from .customer_content import CustomerContentBlock
 from .operations import DeliveryZone, FeatureFlag, RefundLedger, TaxRule
 from .payment import PaymentSession
 from .inventory_reservation import InventoryReservation
+from .recommendation import CustomerRecommendationSnapshot
 
 __all__ = [
     'Cart',
@@ -32,4 +33,5 @@ __all__ = [
     'FeatureFlag',
     'PaymentSession',
     'InventoryReservation',
+    'CustomerRecommendationSnapshot',
 ]
