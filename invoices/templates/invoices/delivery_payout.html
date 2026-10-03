@@ -1,0 +1,11 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+body { font-family: Helvetica, sans-serif; font-size: 13px; color: #182338; }
+h1 { font-size: 24px; }
+</style></head><body>
+<h1>Nextou delivery payout document</h1>
+<p>Document: {{ invoice.invoice_number }}</p>
+<p>Issued: {{ invoice.issued_at|date:"d M Y H:i T" }}</p>
+<p>Recipient: {{ recipient.get_full_name|default:recipient.username }}</p>
+<p>Net earnings (INR): {{ invoice.amount }}</p>
+<p>{{ invoice.notes }}</p>
+</body></html>

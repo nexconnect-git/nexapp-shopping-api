@@ -1,3 +1,4 @@
+from helpers.serializer_fields import StrictIntegerField
 from rest_framework import serializers
 from django.utils.text import slugify
 
@@ -174,19 +175,24 @@ class CatalogProposalReviewSerializer(serializers.Serializer):
 
 
 class CreateVendorProductFromCatalogSerializer(serializers.Serializer):
+    approval_note = serializers.CharField(required=False, allow_blank=True, max_length=500)
+    name = serializers.CharField(required=False, max_length=200)
+    description = serializers.CharField(required=False, allow_blank=True)
+    barcode = serializers.CharField(required=False, allow_blank=True, max_length=100)
+    search_keywords = serializers.CharField(required=False, allow_blank=True)
     catalog_product_id = serializers.UUIDField()
     brand = serializers.CharField(required=False, allow_blank=True, max_length=120)
     unit = serializers.CharField(required=False, allow_blank=True, max_length=20)
-    price = serializers.DecimalField(max_digits=10, decimal_places=2)
+    price = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0)
     compare_price = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, allow_null=True)
     tax_rate = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, default=0)
     sku = serializers.CharField(required=False, allow_blank=True, max_length=50)
-    stock = serializers.IntegerField(required=False, default=0, min_value=0)
-    low_stock_threshold = serializers.IntegerField(required=False, default=10, min_value=0)
-    min_order_quantity = serializers.IntegerField(required=False, default=1, min_value=1)
+    stock = StrictIntegerField(required=False, default=0, min_value=0, max_value=2147483647)
+    low_stock_threshold = StrictIntegerField(required=False, default=10, min_value=0)
+    min_order_quantity = StrictIntegerField(required=False, default=1, min_value=1)
     weight = serializers.CharField(required=False, allow_blank=True, max_length=50)
     is_available = serializers.BooleanField(required=False, default=True)
-    prep_time_minutes = serializers.IntegerField(required=False, default=0, min_value=0)
+    prep_time_minutes = StrictIntegerField(required=False, default=0, min_value=0, max_value=2147483647)
     is_instant_delivery = serializers.BooleanField(required=False, default=True)
     is_scheduled_delivery = serializers.BooleanField(required=False, default=True)
     is_perishable = serializers.BooleanField(required=False, default=False)
@@ -213,6 +219,7 @@ class CreateVendorProductFromCatalogSerializer(serializers.Serializer):
 
 
 class InheritedProductDraftBatchSerializer(serializers.Serializer):
+    batch_id = serializers.UUIDField(required=False)
     catalog_product_ids = serializers.ListField(
         child=serializers.UUIDField(),
         allow_empty=False,
@@ -220,6 +227,7 @@ class InheritedProductDraftBatchSerializer(serializers.Serializer):
 
 
 class InheritedProductSubmitSerializer(serializers.Serializer):
+    approval_note = serializers.CharField(required=False, allow_blank=True, max_length=500)
     product_ids = serializers.ListField(
         child=serializers.UUIDField(),
         allow_empty=False,

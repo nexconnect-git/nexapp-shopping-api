@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsAdminRole
-from delivery.actions import AdminGeneratePartnerTemporaryPasswordAction, AdminReassignDeliveryAction
+from delivery.actions import AdminReassignDeliveryAction
 from delivery.models import DeliveryEarning
 from delivery.serializers import (
     DeliveryPartnerRegistrationSerializer,
@@ -53,12 +53,6 @@ class AdminDeliveryPartnerListView(APIView):
         serializer.is_valid(raise_exception=True)
         partner = serializer.save()
         data = DeliveryPartnerSerializer(partner, context={"request": request}).data
-        temporary_password = (
-            getattr(partner, "auto_generated_password", "")
-            or data.get("user", {}).get("temp_password", "")
-        )
-        if temporary_password:
-            data["temp_password"] = temporary_password
         return Response(data, status=status.HTTP_201_CREATED)
 
 
@@ -143,14 +137,7 @@ class AdminDeliveryPartnerTemporaryPasswordView(APIView):
     permission_classes = [IsAuthenticated, IsAdminRole]
 
     def post(self, request, pk):
-        try:
-            partner, temporary_password = AdminGeneratePartnerTemporaryPasswordAction.execute(pk)
-        except ValueError:
-            return Response({"error": "Delivery partner not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        data = DeliveryPartnerSerializer(partner, context={"request": request}).data
-        data["temp_password"] = temporary_password
-        return Response(data)
+        return Response({'detail': 'Temporary password generation is retired. Use the audited email password-reset endpoint.'}, status=status.HTTP_410_GONE)
 
 
 class AdminDeliveryReassignView(APIView):
@@ -170,7 +157,7 @@ class AdminDeliveryReassignView(APIView):
             return Response(
                 {
                     "status": "reassigned",
-                    "order": OrderSerializer(order).data,
+                    "order": OrderSerializer(order, context={'request': request}).data,
                 }
             )
         except ValueError as exc:

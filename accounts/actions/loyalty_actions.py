@@ -6,6 +6,7 @@ from decimal import Decimal
 from django.db import transaction
 
 from accounts.models.loyalty import LoyaltyAccount, LoyaltyTransaction
+from accounts.data.loyalty_repository import LoyaltyRepository
 
 logger = logging.getLogger(__name__)
 
@@ -29,11 +30,13 @@ class EarnLoyaltyPointsAction:
     @transaction.atomic
     def execute(user, order_total: Decimal, reference_id: str, description: str = '') -> LoyaltyAccount:
         points = max(1, int(order_total * POINTS_PER_RUPEE))
-        account = LoyaltyAccount.objects.select_for_update().get_or_create(user=user)[0]
+        account = LoyaltyRepository.get_locked(user)
+        if reference_id and LoyaltyRepository.earned(account, reference_id):
+            return account
         account.points += points
         account.lifetime_points += points
         account.save(update_fields=['points', 'lifetime_points', 'updated_at'])
-        LoyaltyTransaction.objects.create(
+        LoyaltyRepository.record(
             account=account,
             points=points,
             transaction_type='earn',

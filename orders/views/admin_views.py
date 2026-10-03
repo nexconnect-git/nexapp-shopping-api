@@ -6,6 +6,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsAdminRole
+from backend.data.admin_console_repository import AdminConsoleRepository
+from backend.actions.admin_console_actions import UpdateSupportCaseAction, UpdateAdminSettingsAction
+from backend.serializers.admin_console_serializers import AdminOrderFilterSerializer, AdminIssueFilterSerializer, SupportCaseUpdateSerializer, AdminPlatformSettingsSerializer
 from accounts.actions.audit_actions import CreateAdminAuditLogAction
 from orders.actions.ordering import AdminUpdateOrderStatusAction
 from orders.data.order_repo import OrderRepository
@@ -29,20 +32,15 @@ class AdminOrderListView(generics.ListAPIView):
     serializer_class = OrderSerializer
 
     def get_queryset(self):
-        params = self.request.query_params
-        return OrderRepository.get_all_admin(
-            status_filter=params.get("status"),
-            search=params.get("search"),
-            vendor=params.get("vendor"),
-            customer=params.get("customer"),
-            partner=params.get("delivery_partner"),
-        )
+        filters = AdminOrderFilterSerializer(data=self.request.query_params)
+        filters.is_valid(raise_exception=True)
+        return AdminConsoleRepository.filtered_orders(filters.validated_data)
 
     def get(self, request, *args, **kwargs):
         queryset = self.get_queryset()
         paginator = AdminOrderPagination()
         page = paginator.paginate_queryset(queryset, request)
-        return paginator.get_paginated_response(OrderSerializer(page, many=True).data)
+        return paginator.get_paginated_response(OrderSerializer(page, many=True, context={'request': request}).data)
 
 
 class AdminOrderDetailView(APIView):
@@ -53,7 +51,7 @@ class AdminOrderDetailView(APIView):
             order = OrderRepository.get_by_id(pk, prefetch=["items", "tracking"])
         except Order.DoesNotExist:
             return Response({"error": "Order not found."}, status=status.HTTP_404_NOT_FOUND)
-        return Response(OrderSerializer(order).data)
+        return Response(OrderSerializer(order, context={'request': request}).data)
 
     def patch(self, request, pk):
         new_status = request.data.get("status")
@@ -70,7 +68,7 @@ class AdminOrderDetailView(APIView):
                 summary=f"Updated order #{order.order_number} to {new_status}.",
                 metadata={'status': new_status},
             )
-            return Response(OrderSerializer(order).data)
+            return Response(OrderSerializer(order, context={'request': request}).data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -79,15 +77,18 @@ class AdminOrderIssueListView(APIView):
     permission_classes = [IsAuthenticated, IsAdminRole]
 
     def get(self, request):
+        filters = AdminIssueFilterSerializer(data=request.query_params)
+        filters.is_valid(raise_exception=True)
         queryset = IssueRepository.get_all_admin(
             issue_type=request.query_params.get("issue_type"),
             status_filter=request.query_params.get("status"),
             search=request.query_params.get("search"),
+            order_filters=filters.validated_data,
         )
         paginator = PageNumberPagination()
         paginator.page_size = 20
         page = paginator.paginate_queryset(queryset, request)
-        return paginator.get_paginated_response(OrderIssueSerializer(page, many=True).data)
+        return paginator.get_paginated_response(OrderIssueSerializer(page, many=True, context={'request': request}).data)
 
 
 class AdminOrderIssueDetailView(APIView):
@@ -98,33 +99,14 @@ class AdminOrderIssueDetailView(APIView):
             issue = IssueRepository.get_admin_issue(pk)
         except OrderIssue.DoesNotExist:
             return Response({"error": "Not found."}, status=status.HTTP_404_NOT_FOUND)
-        return Response(OrderIssueSerializer(issue).data)
+        return Response(OrderIssueSerializer(issue, context={'request': request}).data)
 
     def patch(self, request, pk):
-        try:
-            issue = IssueRepository.get_admin_issue(pk)
-        except OrderIssue.DoesNotExist:
-            return Response({"error": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+        serializer = SupportCaseUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        issue = UpdateSupportCaseAction().execute(pk, serializer.validated_data, request)
+        return Response(OrderIssueSerializer(issue, context={'request': request}).data)
 
-        for field in ["status", "admin_notes", "refund_amount", "refund_method"]:
-            if field in request.data:
-                setattr(issue, field, request.data[field])
-
-        new_status = request.data.get("status")
-        if new_status in ("resolved", "rejected", "refund_initiated"):
-            issue.resolved_by = request.user
-            issue.resolved_at = timezone.now()
-
-        issue.save()
-        CreateAdminAuditLogAction().execute(
-            request=request,
-            action='update',
-            entity_type='order_issue',
-            entity_id=str(issue.id),
-            summary=f"Updated order issue {issue.id}.",
-            metadata={field: request.data[field] for field in ["status", "admin_notes", "refund_amount", "refund_method"] if field in request.data},
-        )
-        return Response(OrderIssueSerializer(issue).data)
 
 class AdminPaymentsView(generics.ListAPIView):
     """GET /api/admin/payments/
@@ -136,27 +118,15 @@ class AdminPaymentsView(generics.ListAPIView):
     serializer_class = OrderSerializer
 
     def get_queryset(self):
-        qs = Order.objects.select_related(
-            'customer', 'vendor'
-        ).order_by('-placed_at')
-        method = self.request.query_params.get('method')
-        if method:
-            qs = qs.filter(payment_method=method)
-        verified = self.request.query_params.get('verified')
-        if verified == '1':
-            qs = qs.filter(is_payment_verified=True)
-        elif verified == '0':
-            qs = qs.filter(is_payment_verified=False, payment_method='razorpay')
-        search = self.request.query_params.get('search')
-        if search:
-            qs = qs.filter(order_number__icontains=search)
-        return qs
+        filters = AdminOrderFilterSerializer(data=self.request.query_params)
+        filters.is_valid(raise_exception=True)
+        return AdminConsoleRepository.filtered_orders(filters.validated_data)
 
     def get(self, request, *args, **kwargs):
         queryset = self.get_queryset()
         paginator = AdminOrderPagination()
         page = paginator.paginate_queryset(queryset, request)
-        return paginator.get_paginated_response(OrderSerializer(page, many=True).data)
+        return paginator.get_paginated_response(OrderSerializer(page, many=True, context={'request': request}).data)
 
 
 _PLATFORM_SETTING_FIELDS = [
@@ -181,28 +151,10 @@ class AdminPlatformSettingView(APIView):
     permission_classes = [IsAuthenticated, IsAdminRole]
 
     def get(self, request):
-        setting = PlatformSetting.get_setting()
-        data = {f: getattr(setting, f) for f in _PLATFORM_SETTING_FIELDS}
-        data["enabled_payment_methods"] = setting.normalized_payment_methods()
-        return Response(data)
+        return Response(AdminPlatformSettingsSerializer(AdminConsoleRepository.platform_setting()).data)
 
     def patch(self, request):
-        setting = PlatformSetting.get_setting()
-        updated = []
-        for field in _PLATFORM_SETTING_FIELDS:
-            if field in request.data:
-                setattr(setting, field, request.data[field])
-                updated.append(field)
-        if updated:
-            setting.save(update_fields=updated)
-            CreateAdminAuditLogAction().execute(
-                request=request,
-                action='settings',
-                entity_type='platform_setting',
-                entity_id=str(setting.id),
-                summary=f"Updated {len(updated)} platform setting{'s' if len(updated) != 1 else ''}.",
-                metadata={'updated_fields': updated},
-            )
-        data = {f: getattr(setting, f) for f in _PLATFORM_SETTING_FIELDS}
-        data["enabled_payment_methods"] = setting.normalized_payment_methods()
-        return Response(data)
+        serializer = AdminPlatformSettingsSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        setting = UpdateAdminSettingsAction().execute(serializer.validated_data, request)
+        return Response(AdminPlatformSettingsSerializer(setting).data)

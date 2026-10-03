@@ -37,6 +37,7 @@ class VendorDocument(models.Model):
         on_delete=models.SET_NULL, related_name='verified_documents'
     )
     verified_at  = models.DateTimeField(null=True, blank=True)
+    expires_on = models.DateField(null=True, blank=True)
     uploaded_at  = models.DateTimeField(auto_now_add=True)
 
     class Meta:

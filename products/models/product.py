@@ -103,6 +103,7 @@ class Product(models.Model):
     )
     reviewed_at = models.DateTimeField(null=True, blank=True)
     approval_requested_at = models.DateTimeField(null=True, blank=True)
+    approval_note = models.CharField(max_length=500, blank=True)
     approval_change_summary = models.JSONField(default=list, blank=True)
     submission_batch_id = models.UUIDField(null=True, blank=True)
     brand_normalized = models.CharField(max_length=120, blank=True)

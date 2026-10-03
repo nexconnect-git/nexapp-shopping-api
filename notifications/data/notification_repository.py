@@ -3,9 +3,12 @@
 from django.db.models import Q, QuerySet
 
 from notifications.models import Notification
+from vendors.data.base import BaseRepository
 
 
-class NotificationRepository:
+class NotificationRepository(BaseRepository):
+    def __init__(self):
+        super().__init__(Notification)
     """Encapsulates all ORM queries for the Notification model."""
 
     @staticmethod
@@ -33,6 +36,17 @@ class NotificationRepository:
     def filter_for_user(user) -> QuerySet:
         """Return all notifications belonging to the given user."""
         return Notification.objects.filter(user=user)
+
+    @staticmethod
+    def history_for_user(user, params):
+        query = Notification.objects.filter(user=user)
+        if params.get('notification_type') in ('order', 'delivery', 'payout', 'promo', 'system'):
+            query = query.filter(notification_type=params['notification_type'])
+        if params.get('unread') == 'true':
+            query = query.filter(is_read=False)
+        if params.get('search'):
+            query = query.filter(Q(title__icontains=params['search']) | Q(message__icontains=params['search']))
+        return query.order_by('-created_at', 'id')
 
     @staticmethod
     def filter_admin(search=None, notification_type=None, is_read=None) -> QuerySet:

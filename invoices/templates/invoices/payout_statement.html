@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+body { font-family: Helvetica, sans-serif; font-size: 13px; color: #182338; }
+h1 { font-size: 24px; } td { padding: 9px; border-bottom: 1px solid #e2e8f0; }
+table { width: 100%; } .note { color: #64748b; margin-top: 24px; }
+</style></head><body>
+<h1>Nextou settlement statement</h1>
+<p>Payout reference: {{ payout.id }}</p>
+<p>Recipient: {{ recipient }}</p>
+<p>Period: {{ payout.period_start|date:"d M Y H:i T" }} to {{ payout.period_end|date:"d M Y H:i T" }}</p>
+<table>
+{% if kind == 'vendor' %}
+<tr><td>Gross sales (INR)</td><td>{{ payout.gross_sales }}</td></tr>
+<tr><td>Platform commission (INR)</td><td>{{ payout.platform_commission }}</td></tr>
+{% else %}<tr><td>Deliveries</td><td>{{ payout.total_deliveries }}</td></tr>{% endif %}
+<tr><td><strong>Net payout (INR)</strong></td><td><strong>{{ amount }}</strong></td></tr>
+<tr><td>Recorded status</td><td>{{ payout.get_status_display }}</td></tr>
+<tr><td>External transaction reference</td><td>{{ payout.transaction_ref|default:"Not recorded" }}</td></tr>
+<tr><td>Payment recorded at</td><td>{{ payout.payment_sent_at|date:"d M Y H:i T"|default:"Not recorded" }}</td></tr>
+</table>
+<p class="note">This statement reflects the stored payout record. It is not a tax invoice or independent confirmation of a bank transfer. Payment and verification remain subject to the recorded status.</p>
+</body></html>

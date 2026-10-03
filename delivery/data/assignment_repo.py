@@ -2,10 +2,22 @@ from django.db.models import QuerySet
 from django.utils import timezone
 from datetime import timedelta
 from delivery.models import DeliveryAssignment
+from vendors.data.base import BaseRepository
 
 
-class DeliveryAssignmentRepository:
+class DeliveryAssignmentRepository(BaseRepository):
     """Repository for DeliveryAssignment database operations."""
+
+    def __init__(self):
+        super().__init__(DeliveryAssignment)
+
+    @staticmethod
+    def get_locked(pk):
+        return DeliveryAssignment.objects.select_for_update().get(pk=pk)
+
+    @staticmethod
+    def get_locked_for_order(order):
+        return DeliveryAssignment.objects.select_for_update().filter(order=order).first()
 
     @staticmethod
     def get_by_id(pk: str, prefetch: list = None, select_related: list = None) -> DeliveryAssignment:

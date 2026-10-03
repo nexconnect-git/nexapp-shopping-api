@@ -4,9 +4,40 @@ from django.db import transaction
 from django.db.models import F
 
 from products.models.product import Product
+from helpers.repositories import BaseRepository
 
 
-class ProductRepository:
+class ProductRepository(BaseRepository):
+    def __init__(self):
+        super().__init__(Product)
+
+    @staticmethod
+    def effective_images(product):
+        own = list(product.images.all())
+        base = list(product.catalog_product.images.all()) if product.catalog_product_id else []
+        if product.inheritance_mode == 'vendor_image_only':
+            return own
+        if product.inheritance_mode == 'mixed':
+            return own + base
+        return base
+
+    @staticmethod
+    def locked_by_vendor(vendor_id, product_id):
+        return Product.objects.select_for_update(of=('self',)).select_related('catalog_product', 'category').filter(pk=product_id, vendor_id=vendor_id).first()
+
+    @staticmethod
+    def save_fields(product, fields):
+        product.save(update_fields=sorted(set(fields)))
+        return product
+
+    @staticmethod
+    def locked_owned(product):
+        return Product.objects.select_for_update(of=('self',)).select_related("catalog_product", "category").get(pk=product.pk, vendor_id=product.vendor_id)
+
+    @staticmethod
+    def slug_available(candidate, exclude_id):
+        return not Product.objects.exclude(pk=exclude_id).filter(slug=candidate).exists()
+
     """All ORM access for the Product model lives here."""
     CUSTOMER_VISIBLE_APPROVAL_STATUS = Product.APPROVAL_STATUS_APPROVED
     CUSTOMER_VISIBLE_FILTERS = {
@@ -152,7 +183,7 @@ class ProductRepository:
             Updated Product instance.
         """
         with transaction.atomic():
-            product = Product.objects.select_for_update().get(pk=product_id)
+            product = Product.objects.select_for_update(of=('self',)).get(pk=product_id)
             product.stock = max(0, product.stock - quantity)
             product.save(update_fields=["stock"])
             return product

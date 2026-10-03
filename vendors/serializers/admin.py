@@ -3,8 +3,11 @@ import json
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
+from django.utils.crypto import get_random_string
 from rest_framework import serializers
 from accounts.data.user_repository import UserRepository
+from accounts.admin_access import allows
+from vendors.data.vendor_repo import VendorRepository
 from helpers.phone_helpers import normalize_phone
 from helpers.validators import validate_document_upload, validate_pan, validate_ifsc, validate_gstin
 from vendors.models import (
@@ -18,6 +21,9 @@ from vendors.models import (
     VENDOR_TYPE_CHOICES,
 )
 from vendors.serializers.onboarding import VendorDocumentSerializer
+from vendors.serializers.onboarding import VendorOnboardingSerializer, VendorBankDetailsSerializer
+from vendors.data.vendor_metadata_repository import VendorMetadataRepository, ONBOARD_FIELDS, BANK_FIELDS
+from copy import deepcopy
 from vendors.serializers.public import VendorSerializer
 
 User = get_user_model()
@@ -35,6 +41,8 @@ VENDOR_ONBOARD_DOCUMENT_FIELDS = {
 }
 
 class AdminVendorSerializer(VendorSerializer):
+    total_orders = serializers.SerializerMethodField()
+    total_products = serializers.SerializerMethodField()
     documents = serializers.SerializerMethodField(read_only=True)
     license_document = serializers.FileField(write_only=True, required=False, allow_null=True)
     pan_card_document = serializers.FileField(write_only=True, required=False, allow_null=True)
@@ -47,11 +55,61 @@ class AdminVendorSerializer(VendorSerializer):
     trademark_document = serializers.FileField(write_only=True, required=False, allow_null=True)
 
     class Meta(VendorSerializer.Meta):
-        fields = VendorSerializer.Meta.fields + ["documents"] + list(VENDOR_ONBOARD_DOCUMENT_FIELDS.keys())
+        fields = VendorSerializer.Meta.fields + ["documents", "total_orders", "total_products"] + list(VENDOR_ONBOARD_DOCUMENT_FIELDS.keys()) + list(ONBOARD_FIELDS) + list(BANK_FIELDS) + ['masked_account', 'serviceable_pincodes', 'holidays']
         read_only_fields = [
             "id", "status", "status_reason", "average_rating", "total_ratings",
             "created_at", "updated_at",
         ]
+
+    def get_field_names(self, declared_fields, info):
+        metadata = set(ONBOARD_FIELDS + BANK_FIELDS + ('masked_account', 'serviceable_pincodes', 'holidays'))
+        return [name for name in super().get_field_names(declared_fields, info) if name not in metadata]
+
+    def get_fields(self):
+        fields = super().get_fields()
+        if not self.context.get('include_metadata', True):
+            fields.pop('documents', None)
+            return fields
+        for schema, names in ((VendorOnboardingSerializer, ONBOARD_FIELDS), (VendorBankDetailsSerializer, BANK_FIELDS)):
+            source = schema().fields
+            for name in names:
+                field = deepcopy(source[name])
+                field.source = None
+                field.required = False
+                field.default = serializers.empty
+                fields[name] = field
+        fields['masked_account'] = serializers.CharField(read_only=True)
+        fields['serviceable_pincodes'] = serializers.JSONField(required=False)
+        fields['holidays'] = serializers.JSONField(required=False)
+        return fields
+
+    def to_representation(self, instance):
+        result = super().to_representation(instance)
+        if not self.context.get('include_metadata', True):
+            return result
+        repository = VendorMetadataRepository()
+        onboarding, bank = repository.details(instance)
+        result.update({name: getattr(onboarding, name, None) for name in ONBOARD_FIELDS})
+        request = self.context.get('request')
+        can_read_bank = request and (allows(request.user, 'finance.view') or allows(request.user, 'vendors.manage'))
+        result.update({name: getattr(bank, name, None) if can_read_bank else None for name in BANK_FIELDS if name != 'account_number'})
+        result['masked_account'] = bank.masked_account_number if bank and can_read_bank else ''
+        result.update(repository.collections(instance))
+        return result
+
+    def get_total_orders(self, obj):
+        request = self.context.get('request')
+        if request is None or not allows(request.user, 'orders.view'):
+            return None
+        count = getattr(obj, '_admin_order_count', None)
+        return count if count is not None else VendorRepository().order_count(obj)
+
+    def get_total_products(self, obj):
+        request = self.context.get('request')
+        if request is None or not allows(request.user, 'catalog.view'):
+            return None
+        count = getattr(obj, '_admin_product_count', None)
+        return count if count is not None else VendorRepository().product_count(obj)
 
     def get_documents(self, obj):
         documents = obj.documents.all().order_by("-uploaded_at")
@@ -70,6 +128,7 @@ class AdminVendorSerializer(VendorSerializer):
                 raise serializers.ValidationError({field_name: str(exc)}) from exc
         return attrs
 
+    @transaction.atomic
     def update(self, instance, validated_data):
         document_uploads = {
             document_type: validated_data.pop(field_name, None)
@@ -268,7 +327,7 @@ class VendorFullOnboardSerializer(serializers.Serializer):
         password = validated_data.get("password")
         auto_pw = None
         if not password:
-            auto_pw = User.objects.make_random_password()
+            auto_pw = get_random_string(48)
             password = auto_pw
 
         with transaction.atomic():
@@ -284,7 +343,7 @@ class VendorFullOnboardSerializer(serializers.Serializer):
             )
             if auto_pw:
                 user.force_password_change = True
-                user.temp_password = auto_pw
+                user.temp_password = ''
                 user.save(update_fields=["force_password_change", "temp_password"])
 
             vendor = Vendor.objects.create(
@@ -362,6 +421,4 @@ class VendorFullOnboardSerializer(serializers.Serializer):
                     performed_by=self.context.get("request").user if self.context.get("request") else None
                 )
 
-        if auto_pw:
-            vendor.auto_generated_password = auto_pw
         return vendor

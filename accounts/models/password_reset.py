@@ -1,7 +1,5 @@
-"""Token-based password reset for customers."""
+"""Hashed single-use password reset tokens for all account roles."""
 
-import secrets
-from datetime import timedelta
 
 from django.db import models
 from django.utils import timezone
@@ -33,13 +31,3 @@ class PasswordResetToken(models.Model):
     @property
     def is_valid(self) -> bool:
         return not self.used and timezone.now() < self.expires_at
-
-    @classmethod
-    def create_for_user(cls, user) -> 'PasswordResetToken':
-        """Invalidate prior unused tokens for this user and create a fresh one."""
-        cls.objects.filter(user=user, used=False).update(used=True)
-        return cls.objects.create(
-            user=user,
-            token=secrets.token_urlsafe(64),
-            expires_at=timezone.now() + timedelta(hours=cls.TOKEN_LIFETIME_HOURS),
-        )

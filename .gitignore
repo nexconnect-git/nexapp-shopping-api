@@ -17,12 +17,27 @@ env/
 **/test/
 **/tests/
 **/test_*.py
-!backend/test_settings.py
-!backend/test_urls.py
+**/tests_*.py
 **/*_test.py
 **/*_tests.py
 **/*seed*
 **/*fixture*
+
+# Production migrations can initialize required application configuration.
+!**/migrations/*.py
+
+# Generated validation output
+.venv/
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+coverage/
+runtime_logs/
+.codex-run/
+.codex-visual-validation/
+backend/config/vendor_qa.py
+backend/config/vendor_full_qa.py
 
 # Static/media assets
 static/

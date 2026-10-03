@@ -1,9 +1,13 @@
 from django.db.models import QuerySet, Sum
 from delivery.models import DeliveryEarning
+from vendors.data.base import BaseRepository
 
 
-class DeliveryEarningRepository:
+class DeliveryEarningRepository(BaseRepository):
     """Repository for DeliveryEarning database operations."""
+
+    def __init__(self):
+        super().__init__(DeliveryEarning)
 
     @staticmethod
     def get_by_partner(partner) -> QuerySet[DeliveryEarning]:
@@ -15,6 +19,12 @@ class DeliveryEarningRepository:
             delivery_partner=partner,
             order=order,
             amount=amount
+        )
+
+    @staticmethod
+    def get_or_create(partner, order, amount):
+        return DeliveryEarning.objects.get_or_create(
+            order=order, defaults={'delivery_partner': partner, 'amount': amount},
         )
 
     @staticmethod

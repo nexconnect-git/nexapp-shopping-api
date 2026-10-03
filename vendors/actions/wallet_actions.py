@@ -3,6 +3,7 @@ from django.db import transaction
 
 from vendors.models.vendor import Vendor
 from vendors.models.vendor_wallet import VendorWalletTransaction
+from vendors.data.wallet_repository import VendorWalletRepository
 
 class VendorWalletAction:
     @staticmethod
@@ -11,7 +12,11 @@ class VendorWalletAction:
         """
         Credit the vendor's wallet balance and create a ledger entry.
         """
-        vendor = Vendor.objects.select_for_update().get(id=vendor_id)
+        vendor = VendorWalletRepository.lock_vendor(vendor_id)
+        if source == 'order_earning' and reference_id:
+            existing = VendorWalletRepository.order_credit(vendor, reference_id)
+            if existing:
+                return existing
         
         amount = Decimal(str(amount))
         if amount <= 0:
@@ -20,7 +25,7 @@ class VendorWalletAction:
         vendor.wallet_balance += amount
         vendor.save(update_fields=['wallet_balance', 'updated_at'])
         
-        txn = VendorWalletTransaction.objects.create(
+        txn = VendorWalletRepository().create(
             vendor=vendor,
             amount=amount,
             transaction_type='credit',
@@ -37,7 +42,7 @@ class VendorWalletAction:
         """
         Debit the vendor's wallet balance and create a ledger entry.
         """
-        vendor = Vendor.objects.select_for_update().get(id=vendor_id)
+        vendor = VendorWalletRepository.lock_vendor(vendor_id)
         
         amount = Decimal(str(amount))
         if amount <= 0:
@@ -49,7 +54,7 @@ class VendorWalletAction:
         vendor.wallet_balance -= amount
         vendor.save(update_fields=['wallet_balance', 'updated_at'])
         
-        txn = VendorWalletTransaction.objects.create(
+        txn = VendorWalletRepository().create(
             vendor=vendor,
             amount=amount,
             transaction_type='debit',

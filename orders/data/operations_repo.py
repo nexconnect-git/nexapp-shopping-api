@@ -1,4 +1,6 @@
-from django.db.models import Q
+from decimal import Decimal
+from django.db.models import Q, Sum
+from rest_framework.exceptions import NotFound
 
 from orders.models import DeliveryZone, FeatureFlag, RefundLedger, TaxRule
 from vendors.data.base import BaseRepository
@@ -7,6 +9,25 @@ from vendors.data.base import BaseRepository
 class RefundLedgerRepository(BaseRepository):
     def __init__(self):
         super().__init__(RefundLedger)
+
+    @staticmethod
+    def locked(pk):
+        refund = RefundLedger.objects.select_for_update().filter(pk=pk).first()
+        if not refund:
+            raise NotFound('Refund record not found.')
+        return refund
+
+    @staticmethod
+    def reserved_amount(order_id, exclude_id=None):
+        queryset = RefundLedger.objects.filter(order_id=order_id).exclude(status__in=['failed', 'cancelled'])
+        if exclude_id:
+            queryset = queryset.exclude(pk=exclude_id)
+        return queryset.aggregate(amount=Sum('amount'))['amount'] or Decimal('0')
+
+    @staticmethod
+    def save(refund):
+        refund.save()
+        return refund
 
     @staticmethod
     def list(status_filter=None, method=None, order_id=None, search=None):
@@ -68,6 +89,17 @@ class TaxRuleRepository(BaseRepository):
 class FeatureFlagRepository(BaseRepository):
     def __init__(self):
         super().__init__(FeatureFlag)
+
+    @staticmethod
+    def page_configuration(defaults, lock=False):
+        flags = FeatureFlag.objects.select_for_update() if lock else FeatureFlag.objects
+        flag, _ = flags.get_or_create(key='page_feature_management', defaults={'name':'Page & Feature Management','description':'Registered application route availability.','is_enabled':True,'audience':'all','rollout_percentage':100,'metadata':defaults})
+        return flag
+
+    @staticmethod
+    def save_configuration(flag):
+        flag.save(update_fields=['metadata','is_enabled','updated_by','updated_at'])
+        return flag
 
     @staticmethod
     def list(audience=None, is_enabled=None, search=None):

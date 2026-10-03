@@ -5,6 +5,8 @@ from typing import Any, Dict
 from django.core.cache import cache
 from django.db.models import Count, Q, Sum
 
+from accounts.admin_access import allows, granted_permissions
+from backend.data.admin_console_repository import AdminConsoleRepository
 from accounts.data.user_repository import UserRepository
 from accounts.models.user import User
 from accounts.actions.audit_actions import CreateAdminAuditLogAction
@@ -13,10 +15,10 @@ from accounts.actions.audit_actions import CreateAdminAuditLogAction
 class GetAdminStatsAction:
     """Compute and optionally cache platform-wide aggregate statistics."""
 
-    CACHE_KEY = 'admin_stats_v1'
-    CACHE_TTL = 120  # seconds — reduced DB pressure; dashboard refreshes every 30s anyway
+    CACHE_KEY = 'admin_stats_v2'
+    CACHE_TTL = 15  # seconds — reduced DB pressure; dashboard refreshes every 30s anyway
 
-    def execute(self) -> Dict[str, Any]:
+    def execute(self, user=None) -> Dict[str, Any]:
         """Return aggregated platform statistics, served from cache when fresh.
 
         Returns:
@@ -26,72 +28,19 @@ class GetAdminStatsAction:
         if data is None:
             data = self._compute()
             cache.set(self.CACHE_KEY, data, self.CACHE_TTL)
-        return data
+        if user is None:
+            return data
+        grants = granted_permissions(user)
+        result = {'generated_at': data.get('generated_at')}
+        domains = {'orders': ['orders', 'total_orders', 'pending_orders', 'awaiting_fulfillment', 'orders_delivering', 'completed_orders', 'cancelled_orders', 'orders_placed', 'orders_delivered', 'orders_cancelled'], 'vendors': ['vendors', 'total_vendors', 'pending_vendors'], 'dispatch': ['delivery_partners', 'total_delivery_partners', 'pending_delivery_partners'], 'customers': ['customers', 'total_customers'], 'catalog': ['products', 'total_products'], 'finance': ['total_revenue'], 'support': ['open_issues']}
+        for domain, keys in domains.items():
+            if allows(user, f'{domain}.view', grants):
+                result.update({key: data[key] for key in keys})
+        return result
 
     @staticmethod
     def _compute() -> Dict[str, Any]:
-        # Import here to avoid circular imports at module load time
-        from orders.models import Order
-        from vendors.models import Vendor
-        from products.models import Product
-        from delivery.models import DeliveryPartner
-
-        # Single aggregate pass over orders table
-        order_agg = Order.objects.aggregate(
-            total_count=Count('id'),
-            placed=Count('id', filter=Q(status='placed')),
-            delivering=Count('id', filter=Q(status__in=['picked_up', 'on_the_way'])),
-            delivered=Count('id', filter=Q(status='delivered')),
-            cancelled=Count('id', filter=Q(status='cancelled')),
-            revenue=Sum('total', filter=Q(status='delivered')),
-        )
-
-        total_orders      = order_agg['total_count'] or 0
-        placed_orders     = order_agg['placed']      or 0
-        delivering_orders = order_agg['delivering']  or 0
-        delivered_orders  = order_agg['delivered']   or 0
-        cancelled_orders  = order_agg['cancelled']   or 0
-        total_revenue     = float(order_agg['revenue'] or 0)
-
-        # Batch all simple counts in a single aggregate per model
-        vendor_agg = Vendor.objects.aggregate(
-            total=Count('id'),
-            pending=Count('id', filter=Q(status='pending')),
-        )
-        partner_agg = DeliveryPartner.objects.aggregate(
-            total=Count('id'),
-            pending=Count('id', filter=Q(is_approved=False)),
-        )
-
-        total_vendors    = vendor_agg['total']   or 0
-        pending_vendors  = vendor_agg['pending'] or 0
-        total_partners   = partner_agg['total']  or 0
-        pending_partners = partner_agg['pending'] or 0
-        total_products   = Product.objects.count()
-        total_customers  = User.objects.filter(role='customer').count()
-
-        return {
-            'customers':                  total_customers,
-            'vendors':                    total_vendors,
-            'pending_vendors':            pending_vendors,
-            'delivery_partners':          total_partners,
-            'pending_delivery_partners':  pending_partners,
-            'products':                   total_products,
-            'orders':                     total_orders,
-            'orders_placed':              placed_orders,
-            'orders_delivering':          delivering_orders,
-            'orders_delivered':           delivered_orders,
-            'orders_cancelled':           cancelled_orders,
-            'total_revenue':              total_revenue,
-            'total_vendors':              total_vendors,
-            'total_products':             total_products,
-            'total_customers':            total_customers,
-            'total_delivery_partners':    total_partners,
-            'total_orders':               total_orders,
-            'pending_orders':             placed_orders,
-            'completed_orders':           delivered_orders,
-            'cancelled_orders':           cancelled_orders,
-        }
+        return AdminConsoleRepository.overview()
 
 
 class ManageCustomerAction:
@@ -206,7 +155,7 @@ class CheckUserAvailabilityAction:
         base = ''.join(ch.lower() if ch.isalnum() else '_' for ch in value).strip('_') or 'user'
         candidates = []
         for suffix in ('01', '02', 'hq', 'ops', 'new'):
-            candidate = f'{base}_{suffix}'[:30]
+            candidate = f'{base[:150 - len(suffix) - 1]}_{suffix}'
             if not UserRepository.username_exists(candidate):
                 candidates.append(candidate)
             if len(candidates) >= 3:

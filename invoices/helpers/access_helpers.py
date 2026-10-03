@@ -1,6 +1,9 @@
+from accounts.admin_access import allows
+
+
 def user_can_access_invoice(user, invoice) -> bool:
-    if getattr(user, 'role', '') == 'admin' or user.is_superuser:
-        return True
+    if getattr(user, 'role', '') == 'admin':
+        return allows(user, 'finance.view')
     if invoice.recipient == user:
         return True
     if invoice.vendor and hasattr(user, 'vendor_profile') and invoice.vendor == user.vendor_profile:

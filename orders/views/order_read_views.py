@@ -43,7 +43,7 @@ class CancelOrderView(APIView):
     def post(self, request, pk):
         try:
             order = CancelOrderAction().execute(str(pk), request.user)
-            return Response(OrderSerializer(order).data)
+            return Response(OrderSerializer(order, context={'request': request}).data)
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 

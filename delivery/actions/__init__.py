@@ -1,15 +1,14 @@
-from .delivery_actions import AcceptDeliveryAction, UpdateDeliveryStatusAction, ConfirmDeliveryAction
-from .assignment_actions import (
+from delivery.actions.delivery_actions import AcceptDeliveryAction, UpdateDeliveryStatusAction, ConfirmDeliveryAction
+from delivery.actions.assignment_actions import (
     AcceptAssignmentAction,
     RejectAssignmentAction,
     CancelAssignmentAction,
     AdminReassignDeliveryAction,
 )
-from .partner_actions import (
+from delivery.actions.partner_actions import (
     UpdateLocationAction,
     SetAvailabilityAction,
     AdminTogglePartnerApprovalAction,
-    AdminGeneratePartnerTemporaryPasswordAction,
 )
 
 __all__ = [
@@ -23,5 +22,4 @@ __all__ = [
     'UpdateLocationAction',
     'SetAvailabilityAction',
     'AdminTogglePartnerApprovalAction',
-    'AdminGeneratePartnerTemporaryPasswordAction',
 ]

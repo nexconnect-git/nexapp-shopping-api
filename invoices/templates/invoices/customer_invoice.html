@@ -72,8 +72,8 @@
             <tr>
                 <td>{{ item.product_name }}</td>
                 <td>{{ item.quantity }}</td>
-                <td>${{ item.product_price }}</td>
-                <td>${{ item.subtotal }}</td>
+                <td>INR {{ item.product_price }}</td>
+                <td>INR {{ item.subtotal }}</td>
             </tr>
             {% empty %}
             <tr>
@@ -82,19 +82,19 @@
             {% endfor %}
             <tr class="total-row">
                 <td colspan="3" style="text-align: right;">Subtotal:</td>
-                <td>${{ order.subtotal }}</td>
+                <td>INR {{ order.subtotal }}</td>
             </tr>
             <tr>
                 <td colspan="3" style="text-align: right;">Delivery Fee:</td>
-                <td>${{ order.delivery_fee }}</td>
+                <td>INR {{ order.delivery_fee }}</td>
             </tr>
             <tr>
                 <td colspan="3" style="text-align: right;">Discount:</td>
-                <td>-${{ order.discount }}</td>
+                <td>-INR {{ order.discount }}</td>
             </tr>
             <tr class="total-row">
                 <td colspan="3" style="text-align: right;">Total Amount:</td>
-                <td>${{ order.total }}</td>
+                <td>INR {{ order.total }}</td>
             </tr>
         </tbody>
     </table>

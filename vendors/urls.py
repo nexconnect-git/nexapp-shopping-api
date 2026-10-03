@@ -1,6 +1,8 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from vendors import views
+from vendors.views.workspace import VendorWorkspaceView, VendorInventoryReviewView, VendorOwnDocumentsView, VendorOnboardingContactView
+from vendors.views.payouts_and_misc import VendorPayoutStatementView
 
 router = DefaultRouter()
 router.register(r'products', views.VendorProductViewSet, basename='vendor-product')
@@ -10,6 +12,11 @@ review_router = DefaultRouter()
 review_router.register(r'reviews', views.VendorReviewViewSet, basename='vendor-review')
 
 urlpatterns = [
+    path('payouts/<uuid:pk>/statement/', VendorPayoutStatementView.as_view(), name='vendor-payout-statement'),
+    path('workspace/', VendorWorkspaceView.as_view(), name='vendor-workspace'),
+    path('inventory/review/', VendorInventoryReviewView.as_view(), name='vendor-inventory-review'),
+    path('onboarding/documents/', VendorOwnDocumentsView.as_view(), name='vendor-own-documents'),
+    path('onboarding/contact/', VendorOnboardingContactView.as_view(), name='vendor-onboarding-contact'),
     path('catalog-products/available/', views.VendorAvailableCatalogProductsView.as_view(), name='vendor-available-catalog-products'),
     path('catalog-products/available/<uuid:pk>/', views.VendorCatalogProductDetailView.as_view(), name='vendor-available-catalog-product-detail'),
     path('catalog-proposals/', views.VendorCatalogProposalListCreateView.as_view(), name='vendor-catalog-proposals'),

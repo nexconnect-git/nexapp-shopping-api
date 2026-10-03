@@ -4,16 +4,29 @@ from django.utils.text import slugify
 from helpers.media_helpers import safe_media_url
 from helpers.vendor_hours import get_vendor_availability
 from products.models import Product
+from products.data.product_repository import ProductRepository
+from helpers.serializer_fields import StrictIntegerField
 from products.serializers.catalog_serializers import CatalogProductSerializer
 from products.serializers.category_serializers import CategorySerializer
 from products.serializers.image_serializers import ProductImageSerializer
 from vendors.serializers import VendorListSerializer
 
 
-class ProductSerializer(serializers.ModelSerializer):
+class ProductReviewPrivacyMixin:
+    def to_representation(self, instance):
+        values = super().to_representation(instance)
+        request = self.context.get('request')
+        private_route = request and ('/vendors/products/' in request.path or '/vendors/inherited-products/' in request.path or '/admin/' in request.path)
+        if not private_route:
+            values.pop('approval_note', None)
+        return values
+
+
+class ProductSerializer(ProductReviewPrivacyMixin, serializers.ModelSerializer):
     """Full product serializer with nested vendor, category, and images."""
 
     images = ProductImageSerializer(many=True, read_only=True)
+    primary_image = serializers.SerializerMethodField()
     catalog_product = CatalogProductSerializer(read_only=True)
     vendor = VendorListSerializer(read_only=True)
     category = CategorySerializer(read_only=True)
@@ -42,10 +55,10 @@ class ProductSerializer(serializers.ModelSerializer):
             "ingredients", "allergens", "shelf_life", "barcode",
             "compliance_notes", "status", "is_featured", "inheritance_mode",
             "approval_status", "approval_status_label", "rejection_reason", "reviewed_at",
-            "approval_requested_at", "approval_change_summary", "requires_admin_review",
+            "approval_requested_at", "approval_note", "approval_change_summary", "requires_admin_review",
             "submission_batch_id", "average_rating",
             "total_ratings", "total_orders", "discount_percentage", "in_stock",
-            "images", "image_count", "visibility_status", "visibility_blockers",
+            "images", "primary_image", "image_count", "visibility_status", "visibility_blockers",
             "category_visibility", "sales_count", "revenue", "created_at", "updated_at",
         ]
         read_only_fields = [
@@ -53,14 +66,19 @@ class ProductSerializer(serializers.ModelSerializer):
             "created_at", "updated_at",
         ]
 
+    def get_primary_image(self, obj):
+        return ProductListSerializer.get_primary_image(self, obj)
+
+    def to_representation(self, instance):
+        values = super().to_representation(instance)
+        request = self.context.get('request')
+        management = request and ('/vendors/products/' in request.path or '/vendors/inherited-products/' in request.path or '/admin/' in request.path)
+        if not management:
+            values['images'] = ProductImageSerializer(ProductRepository.effective_images(instance), many=True, context=self.context).data
+        return values
+
     def get_image_count(self, obj) -> int:
-        annotated = getattr(obj, "image_count", None)
-        if annotated is not None:
-            return annotated
-        count = obj.images.count()
-        if count == 0 and obj.catalog_product_id:
-            return obj.catalog_product.images.count()
-        return count
+        return len(ProductRepository.effective_images(obj))
 
     def get_category_visibility(self, obj) -> str:
         if not obj.category:
@@ -69,6 +87,12 @@ class ProductSerializer(serializers.ModelSerializer):
 
     def get_visibility_blockers(self, obj) -> list[str]:
         blockers = []
+        if obj.approval_status != Product.APPROVAL_STATUS_APPROVED:
+            blockers.append('Product is awaiting approval.' if obj.approval_status == 'pending_approval' else 'Product approval is required.')
+        if not obj.catalog_product_id:
+            blockers.append('Link an approved catalog item.')
+        elif not obj.catalog_product.is_active:
+            blockers.append('Catalog item is inactive.')
         if obj.status != "active":
             blockers.append("Product status is not active.")
         if not obj.is_available:
@@ -79,7 +103,7 @@ class ProductSerializer(serializers.ModelSerializer):
             blockers.append("Add at least one product image.")
         if not obj.category:
             blockers.append("Select a category.")
-        elif not obj.category.show_in_customer_ui:
+        elif not obj.category.is_active or not obj.category.show_in_customer_ui:
             blockers.append("Category is awaiting customer-app approval.")
         return blockers
 
@@ -99,7 +123,7 @@ class ProductSerializer(serializers.ModelSerializer):
         return dict(Product.APPROVAL_STATUS_CHOICES).get(obj.approval_status, obj.approval_status)
 
 
-class ProductListSerializer(serializers.ModelSerializer):
+class ProductListSerializer(ProductReviewPrivacyMixin, serializers.ModelSerializer):
     """Lightweight product serializer for list views (no nested reviews)."""
 
     vendor = serializers.SerializerMethodField()
@@ -131,7 +155,7 @@ class ProductListSerializer(serializers.ModelSerializer):
             "allergens", "shelf_life", "barcode", "compliance_notes",
             "is_available", "status", "is_featured", "inheritance_mode",
             "approval_status", "approval_status_label", "rejection_reason", "reviewed_at",
-            "approval_requested_at", "approval_change_summary", "requires_admin_review", "submission_batch_id",
+            "approval_requested_at", "approval_note", "approval_change_summary", "requires_admin_review", "submission_batch_id",
             "average_rating", "total_ratings", "discount_percentage", "in_stock",
             "primary_image", "vendor_name", "image_count", "visibility_status",
             "visibility_blockers", "category_visibility", "sales_count", "revenue",
@@ -139,16 +163,9 @@ class ProductListSerializer(serializers.ModelSerializer):
 
     def get_primary_image(self, obj) -> str | None:
         """Return the absolute URL of the primary image, or None."""
-        primary = obj.images.filter(is_primary=True).first()
-        if primary:
-            return safe_media_url(primary.image, request=self.context.get("request"))
-        if obj.catalog_product_id:
-            catalog_primary = obj.catalog_product.images.filter(is_primary=True).first()
-            if not catalog_primary:
-                catalog_primary = obj.catalog_product.images.first()
-            if catalog_primary:
-                return safe_media_url(catalog_primary.image, request=self.context.get("request"))
-        return None
+        images = ProductRepository.effective_images(obj)
+        primary = next((image for image in images if image.is_primary), images[0] if images else None)
+        return safe_media_url(primary.image, request=self.context.get("request")) if primary else None
 
     def get_vendor(self, obj) -> dict:
         vendor = obj.vendor
@@ -165,13 +182,7 @@ class ProductListSerializer(serializers.ModelSerializer):
         }
 
     def get_image_count(self, obj) -> int:
-        annotated = getattr(obj, "image_count", None)
-        if annotated is not None:
-            return annotated
-        count = obj.images.count()
-        if count == 0 and obj.catalog_product_id:
-            return obj.catalog_product.images.count()
-        return count
+        return len(ProductRepository.effective_images(obj))
 
     def get_category_visibility(self, obj) -> str:
         if not obj.category:
@@ -180,6 +191,12 @@ class ProductListSerializer(serializers.ModelSerializer):
 
     def get_visibility_blockers(self, obj) -> list[str]:
         blockers = []
+        if obj.approval_status != Product.APPROVAL_STATUS_APPROVED:
+            blockers.append('Product is awaiting approval.' if obj.approval_status == 'pending_approval' else 'Product approval is required.')
+        if not obj.catalog_product_id:
+            blockers.append('Link an approved catalog item.')
+        elif not obj.catalog_product.is_active:
+            blockers.append('Catalog item is inactive.')
         if obj.status != "active":
             blockers.append("Product status is not active.")
         if not obj.is_available:
@@ -190,7 +207,7 @@ class ProductListSerializer(serializers.ModelSerializer):
             blockers.append("Add at least one product image.")
         if not obj.category:
             blockers.append("Select a category.")
-        elif not obj.category.show_in_customer_ui:
+        elif not obj.category.is_active or not obj.category.show_in_customer_ui:
             blockers.append("Category is awaiting customer-app approval.")
         return blockers
 
@@ -217,6 +234,10 @@ class ProductCreateUpdateSerializer(serializers.ModelSerializer):
     """
 
     images = ProductImageSerializer(many=True, read_only=True)
+    stock = StrictIntegerField(required=False, min_value=0, max_value=2147483647)
+    low_stock_threshold = StrictIntegerField(required=False, min_value=0, max_value=2147483647)
+    min_order_quantity = StrictIntegerField(required=False, min_value=1, max_value=2147483647)
+    prep_time_minutes = StrictIntegerField(required=False, min_value=0, max_value=2147483647)
 
     class Meta:
         model = Product
@@ -284,6 +305,16 @@ class ProductCreateUpdateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 "catalog_product": "Sellable vendor products must inherit an approved catalog item."
             })
+        price = attrs.get('price', instance.price if instance else None)
+        compare = attrs.get('compare_price', instance.compare_price if instance else None)
+        if price is not None and price < 0:
+            raise serializers.ValidationError({'price': 'Price cannot be negative.'})
+        if compare is not None and price is not None and compare < price:
+            raise serializers.ValidationError({'compare_price': 'Compare price must be at least the selling price.'})
+        instant = attrs.get('is_instant_delivery', instance.is_instant_delivery if instance else True)
+        scheduled = attrs.get('is_scheduled_delivery', instance.is_scheduled_delivery if instance else True)
+        if not instant and not scheduled:
+            raise serializers.ValidationError({'is_instant_delivery': 'Enable at least one delivery mode.'})
         return attrs
 
     def create(self, validated_data):

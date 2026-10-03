@@ -13,5 +13,5 @@ class AdminStatsView(APIView):
 
     def get(self, request):
         action = GetAdminStatsAction()
-        stats = action.execute()
+        stats = action.execute(request.user)
         return Response(stats, status=status.HTTP_200_OK)

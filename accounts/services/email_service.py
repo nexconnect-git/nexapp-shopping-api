@@ -352,7 +352,15 @@ class EmailService:
 
     @staticmethod
     def send_password_reset_email(user, token: str) -> None:
-        reset_url = f"{FRONTEND_URL}/reset-password?token={token}"
+        if user.role == 'admin':
+            base = EmailService._admin_panel_url()
+        elif user.role == 'vendor':
+            base = EmailService._vendor_app_url()
+        elif user.role == 'delivery':
+            base = EmailService._setting('DELIVERY_APP_URL') or EmailService._customer_app_url()
+        else:
+            base = EmailService._customer_app_url()
+        reset_url = f"{base.rstrip('/')}/reset-password?token={token}"
         EmailService._send(
             "Reset your Nextou password",
             (

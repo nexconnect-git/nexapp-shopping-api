@@ -1,6 +1,8 @@
 import json
 
 from channels.generic.websocket import AsyncWebsocketConsumer
+from channels.db import database_sync_to_async
+from vendors.data.workspace_repository import VendorWorkspaceRepository
 
 
 class VendorOperationsConsumer(AsyncWebsocketConsumer):
@@ -9,12 +11,8 @@ class VendorOperationsConsumer(AsyncWebsocketConsumer):
         if not user or not user.is_authenticated:
             await self.close(code=4001)
             return
-        try:
-            vendor = user.vendor_profile
-        except Exception:
-            await self.close(code=4003)
-            return
-        if vendor.status != "approved":
+        vendor = await database_sync_to_async(VendorWorkspaceRepository().for_operations_socket)(user.pk)
+        if not vendor:
             await self.close(code=4003)
             return
 

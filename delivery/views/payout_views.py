@@ -11,6 +11,7 @@ from rest_framework.views import APIView
 
 from accounts.actions.audit_actions import CreateAdminAuditLogAction
 from accounts.permissions import HasAdminPermission
+from vendors.actions import CreateAdminPayoutAction, DeclineDeliveryPayoutAction, UpdateAdminPayoutAction
 from vendors.models import DeliveryPartnerPayout
 from vendors.serializers import DeliveryPartnerPayoutSerializer
 
@@ -67,15 +68,7 @@ class DeliveryPayoutDeclineView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
-        try:
-            payout = DeliveryPartnerPayout.objects.get(pk=pk, delivery_partner=request.user)
-        except DeliveryPartnerPayout.DoesNotExist:
-            return Response({"error": "Payout not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        reason = request.data.get("reason", "")
-        payout.status = "failed"
-        payout.partner_rejection_reason = reason
-        payout.save(update_fields=["status", "partner_rejection_reason"])
+        payout = DeclineDeliveryPayoutAction().execute(pk, request.data.get('reason', ''), request)
         return Response(DeliveryPartnerPayoutSerializer(payout).data)
 
 
@@ -109,6 +102,10 @@ class AdminDeliveryPayoutListView(APIView):
     """GET /api/admin/payouts/delivery/ — list all delivery payouts."""
     permission_classes = [IsAuthenticated, HasAdminPermission]
     required_admin_permission = 'finance.manage'
+
+    def post(self, request):
+        payout = CreateAdminPayoutAction().execute('delivery', request.data, request)
+        return Response(DeliveryPartnerPayoutSerializer(payout).data, status=status.HTTP_201_CREATED)
 
     def get(self, request):
         qs = DeliveryPartnerPayout.objects.select_related(
@@ -148,21 +145,8 @@ class AdminDeliveryPayoutDetailView(APIView):
         return Response(DeliveryPartnerPayoutSerializer(payout).data)
 
     def patch(self, request, pk):
-        payout = self._get(pk)
-        if not payout:
-            return Response({"error": "Not found."}, status=status.HTTP_404_NOT_FOUND)
-        serializer = DeliveryPartnerPayoutSerializer(payout, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        CreateAdminAuditLogAction().execute(
-            request=request,
-            action='payout',
-            entity_type='delivery_payout',
-            entity_id=str(payout.id),
-            summary=f"Updated delivery payout {payout.id}.",
-            metadata=request.data,
-        )
-        return Response(serializer.data)
+        payout = UpdateAdminPayoutAction().execute('delivery', pk, 'edit', request.data, request=request)
+        return Response(DeliveryPartnerPayoutSerializer(payout).data)
 
 
 class AdminDeliveryPayoutScheduleView(APIView):
@@ -171,21 +155,7 @@ class AdminDeliveryPayoutScheduleView(APIView):
     required_admin_permission = 'finance.manage'
 
     def post(self, request, pk):
-        try:
-            payout = DeliveryPartnerPayout.objects.get(pk=pk)
-        except DeliveryPartnerPayout.DoesNotExist:
-            return Response({"error": "Not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        payout.status = "scheduled"
-        payout.save(update_fields=["status"])
-        CreateAdminAuditLogAction().execute(
-            request=request,
-            action='payout',
-            entity_type='delivery_payout',
-            entity_id=str(payout.id),
-            summary=f"Scheduled delivery payout {payout.id}.",
-            metadata={'status': 'scheduled'},
-        )
+        payout = UpdateAdminPayoutAction().execute('delivery', pk, 'schedule', request.data, request=request)
         return Response(DeliveryPartnerPayoutSerializer(payout).data)
 
 
@@ -195,25 +165,7 @@ class AdminDeliveryPayoutSendPaymentView(APIView):
     required_admin_permission = 'finance.manage'
 
     def post(self, request, pk):
-        try:
-            payout = DeliveryPartnerPayout.objects.get(pk=pk)
-        except DeliveryPartnerPayout.DoesNotExist:
-            return Response({"error": "Not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        transaction_ref = request.data.get("transaction_ref", "")
-        payout.status = "paid"
-        payout.transaction_ref = transaction_ref
-        payout.payment_sent_at = timezone.now()
-        payout.paid_at = timezone.now()
-        payout.save(update_fields=["status", "transaction_ref", "payment_sent_at", "paid_at"])
-        CreateAdminAuditLogAction().execute(
-            request=request,
-            action='payout',
-            entity_type='delivery_payout',
-            entity_id=str(payout.id),
-            summary=f"Marked delivery payout {payout.id} as paid.",
-            metadata={'status': 'paid', 'transaction_ref': transaction_ref},
-        )
+        payout = UpdateAdminPayoutAction().execute('delivery', pk, 'record_payment', request.data, request=request)
         return Response(DeliveryPartnerPayoutSerializer(payout).data)
 
 
@@ -223,20 +175,5 @@ class AdminDeliveryPayoutForcePaidView(APIView):
     required_admin_permission = 'finance.manage'
 
     def post(self, request, pk):
-        try:
-            payout = DeliveryPartnerPayout.objects.get(pk=pk)
-        except DeliveryPartnerPayout.DoesNotExist:
-            return Response({"error": "Not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        payout.status = "verified"
-        payout.partner_verified_at = timezone.now()
-        payout.save(update_fields=["status", "partner_verified_at"])
-        CreateAdminAuditLogAction().execute(
-            request=request,
-            action='payout',
-            entity_type='delivery_payout',
-            entity_id=str(payout.id),
-            summary=f"Force-verified delivery payout {payout.id}.",
-            metadata={'status': 'verified'},
-        )
+        payout = UpdateAdminPayoutAction().execute('delivery', pk, 'verify_override', request.data, request=request)
         return Response(DeliveryPartnerPayoutSerializer(payout).data)

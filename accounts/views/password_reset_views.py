@@ -1,83 +1,40 @@
-"""Token-based password reset views."""
-
 import logging
-
-from django.contrib.auth import get_user_model
+from rest_framework import serializers
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
-from rest_framework import status
-
-from accounts.models import PasswordResetToken
-from accounts.services.email_service import EmailService
+from accounts.actions import RequestAccountPasswordResetAction, ConfirmAccountPasswordResetAction
 
 logger = logging.getLogger(__name__)
-User = get_user_model()
 
+class ResetThrottle(AnonRateThrottle):
+    rate = '5/hour'
 
 class RequestPasswordResetView(APIView):
-    """POST /api/auth/password-reset/
-
-    Accepts ``{ "email": "..." }`` and sends a reset link if the address
-    is registered.  Always returns 200 so callers cannot enumerate accounts.
-    """
-
     permission_classes = [AllowAny]
+    throttle_classes = [ResetThrottle]
 
     def post(self, request):
-        email = (request.data.get('email') or '').strip().lower()
-        if email:
+        email = str(request.data.get('email') or '').strip().lower()
+        role = request.data.get('role', '')
+        if email and role in ('', 'customer', 'vendor', 'delivery', 'admin'):
             try:
-                user = User.objects.get(email__iexact=email, is_active=True)
-                token_obj = PasswordResetToken.create_for_user(user)
-                EmailService.send_password_reset_email(user, token_obj.token)
-            except User.DoesNotExist:
-                pass  # Silently ignore — no user enumeration
-            except Exception as exc:
-                logger.error("Password reset email failed for %s: %s", email, exc)
+                RequestAccountPasswordResetAction().execute(email=email, role=role)
+            except Exception:
+                logger.warning('Self-service password reset could not be delivered.')
+        return Response({'detail': 'If that account is eligible, a reset link has been sent.'})
 
-        return Response({'detail': 'If that email is registered, a reset link has been sent.'})
-
+class ResetConfirmSerializer(serializers.Serializer):
+    token = serializers.CharField(max_length=128)
+    new_password = serializers.CharField(min_length=8, max_length=128, trim_whitespace=False)
 
 class ConfirmPasswordResetView(APIView):
-    """POST /api/auth/password-reset/confirm/
-
-    Accepts ``{ "token": "...", "new_password": "..." }``.
-    Validates the token and sets the new password.
-    """
-
     permission_classes = [AllowAny]
+    throttle_classes = [ResetThrottle]
 
     def post(self, request):
-        token_str = (request.data.get('token') or '').strip()
-        new_password = (request.data.get('new_password') or '').strip()
-
-        if not token_str or not new_password:
-            return Response(
-                {'error': 'token and new_password are required.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if len(new_password) < 8:
-            return Response(
-                {'error': 'Password must be at least 8 characters.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        try:
-            token_obj = PasswordResetToken.objects.select_related('user').get(token=token_str)
-        except PasswordResetToken.DoesNotExist:
-            return Response({'error': 'Invalid or expired reset link.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        if not token_obj.is_valid:
-            return Response({'error': 'This reset link has expired or already been used.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        user = token_obj.user
-        user.set_password(new_password)
-        user.save(update_fields=['password'])
-
-        token_obj.used = True
-        token_obj.save(update_fields=['used'])
-
-        EmailService.send_password_changed_email(user)
-        return Response({'detail': 'Password has been reset successfully.'})
+        data = ResetConfirmSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        ConfirmAccountPasswordResetAction().execute(**data.validated_data)
+        return Response({'detail': 'Password changed. Sign in again to continue.'})

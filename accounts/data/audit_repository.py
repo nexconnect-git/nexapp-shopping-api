@@ -50,6 +50,7 @@ class AdminAuditLogRepository:
         *,
         action: Optional[str] = None,
         entity_type: Optional[str] = None,
+        entity_id: Optional[str] = None,
         actor_id: Optional[str] = None,
         search: Optional[str] = None,
     ) -> QuerySet:
@@ -58,6 +59,8 @@ class AdminAuditLogRepository:
             queryset = queryset.filter(action=action)
         if entity_type:
             queryset = queryset.filter(entity_type__iexact=entity_type)
+        if entity_id:
+            queryset = queryset.filter(entity_id=entity_id) | queryset.filter(metadata__order_id=entity_id)
         if actor_id:
             queryset = queryset.filter(actor_id=actor_id)
         if search:

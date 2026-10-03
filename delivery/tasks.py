@@ -11,11 +11,15 @@ from datetime import timedelta
 import django_rq
 from django_rq import job
 from django.utils import timezone
+from django.db import transaction
 
 from helpers.geo_helpers import haversine
 from delivery.models import DeliveryAssignment, DeliveryPartner
+from delivery.data.assignment_repo import DeliveryAssignmentRepository
+from orders.data.order_repo import OrderRepository
 from notifications.fcm import send_push
 from notifications.models import Notification
+from vendors.realtime import broadcast_order_event
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +41,7 @@ def delayed_timeout_check(assignment_id: str) -> None:
 
 
 @job("default")
+@transaction.atomic
 def search_and_notify_partners(assignment_id: str) -> None:
     """Find available delivery partners within the assignment's search radius and notify them.
 
@@ -49,23 +54,18 @@ def search_and_notify_partners(assignment_id: str) -> None:
     ``_expand_and_retry``. A 1-minute timeout check is also scheduled so that
     the vendor is alerted when no partner accepts.
 
-    Note:
-        Model imports are inline to prevent circular import errors in RQ workers.
-
     Args:
         assignment_id: UUID string primary key of the ``DeliveryAssignment``.
     """
     try:
-        assignment = (
-            DeliveryAssignment.objects
-            .select_related("order__vendor")
-            .prefetch_related("notified_partners", "rejected_partners")
-            .get(id=assignment_id)
-        )
+        snapshot = DeliveryAssignmentRepository.get_by_id(assignment_id)
+        order = OrderRepository.get_locked(snapshot.order_id)
+        assignment = DeliveryAssignmentRepository.get_locked(assignment_id)
+        assignment.order = order
     except DeliveryAssignment.DoesNotExist:
         return
 
-    if assignment.status in ("accepted", "cancelled", "timed_out"):
+    if assignment.status not in ('searching', 'notified') or assignment.order.status != 'ready':
         return
 
     # Skip if the assignment was stuck in the queue for more than 1 minute
@@ -138,6 +138,7 @@ def search_and_notify_partners(assignment_id: str) -> None:
         assignment.status = "notified"
         assignment.last_search_at = timezone.now()
         assignment.save(update_fields=["status", "last_search_at", "updated_at"])
+        transaction.on_commit(lambda: broadcast_order_event(order))
         logger.info(
             "Assignment %s: notified %d partners within %s km",
             assignment_id,
@@ -171,9 +172,8 @@ def search_and_notify_partners(assignment_id: str) -> None:
 def _expand_and_retry(assignment) -> None:
     """Expand the search radius and re-queue a partner search.
 
-    Increases ``current_radius_km`` by 2 km. When the maximum radius is
-    exceeded, the radius cycles back to 2 km and the notified-partners list is
-    cleared so all partners can receive the request again.
+    Increases ``current_radius_km`` by 2 km until the configured maximum.
+    Exhausted searches become failed and can be explicitly retried by the vendor.
 
     A 2-second sleep is inserted to prevent tight infinite loops in background
     workers.
@@ -181,33 +181,28 @@ def _expand_and_retry(assignment) -> None:
     Args:
         assignment: The ``DeliveryAssignment`` instance to retry.
     """
-    assignment.current_radius_km += 2.0
-    if assignment.current_radius_km > assignment.max_radius_km:
-        # Cycle back and allow all partners to be notified again
-        assignment.current_radius_km = 2.0
-        assignment.notified_partners.clear()
-        logger.info(
-            "Assignment %s: cycled back to 2 km, cleared notified partners",
-            assignment.id,
-        )
-
     # Small delay to prevent tight infinite looping in background workers
     time.sleep(2)
 
     # Re-fetch so we don't overwrite a cancel/accept that arrived during the sleep.
-    assignment.refresh_from_db()
-    if assignment.status in ("accepted", "cancelled", "timed_out", "failed"):
-        logger.info(
-            "Assignment %s: aborting expand/retry — status is now '%s'",
-            assignment.id,
-            assignment.status,
-        )
-        return
-
-    assignment.status = "searching"
-    assignment.last_search_at = timezone.now()
-    assignment.save(update_fields=["status", "current_radius_km", "last_search_at", "updated_at"])
-    search_and_notify_partners.delay(str(assignment.id))
+    with transaction.atomic():
+        assignment = DeliveryAssignmentRepository.get_locked(assignment.pk)
+        if assignment.status not in ('searching', 'notified') or assignment.order.status != 'ready':
+            return
+        assignment.current_radius_km += 2.0
+        if assignment.current_radius_km > assignment.max_radius_km:
+            assignment.current_radius_km = assignment.max_radius_km
+            assignment.status = 'failed'
+            assignment.save(update_fields=['status', 'current_radius_km', 'updated_at'])
+            Notification.objects.create(user=assignment.order.vendor.user, title='No available driver',
+                message='No available driver was found within the maximum search radius. Retry from the order when a driver is available.',
+                notification_type='delivery', data={'order_id':str(assignment.order_id),'type':'assignment_timeout'})
+            transaction.on_commit(lambda: broadcast_order_event(assignment.order))
+            return
+        assignment.status = 'searching'
+        assignment.last_search_at = timezone.now()
+        assignment.save(update_fields=['status', 'current_radius_km', 'last_search_at', 'updated_at'])
+        transaction.on_commit(lambda: search_and_notify_partners.delay(str(assignment.id)))
     logger.info(
         "Assignment %s: expanding/cycling to %s km",
         assignment.id,
@@ -216,6 +211,7 @@ def _expand_and_retry(assignment) -> None:
 
 
 @job("default")
+@transaction.atomic
 def check_assignment_timeout(assignment_id: str) -> None:
     """Handle a 1-minute partner-notification timeout.
 
@@ -224,16 +220,14 @@ def check_assignment_timeout(assignment_id: str) -> None:
     ``timed_out``, and sends a notification to the vendor so they can
     retrigger the pickup-ready status.
 
-    Note:
-        Model imports are inline to prevent circular import errors in RQ workers.
-
     Args:
         assignment_id: UUID string primary key of the ``DeliveryAssignment``.
     """
     try:
-        assignment = DeliveryAssignment.objects.select_related(
-            "order__vendor__user"
-        ).get(id=assignment_id)
+        snapshot = DeliveryAssignmentRepository.get_by_id(assignment_id)
+        order = OrderRepository.get_locked(snapshot.order_id)
+        assignment = DeliveryAssignmentRepository.get_locked(assignment_id)
+        assignment.order = order
     except DeliveryAssignment.DoesNotExist:
         return
 
@@ -260,6 +254,7 @@ def check_assignment_timeout(assignment_id: str) -> None:
 
     assignment.status = "timed_out"
     assignment.save(update_fields=["status", "updated_at"])
+    transaction.on_commit(lambda: broadcast_order_event(order))
     logger.info("Assignment %s: timed out — notifying vendor", assignment_id)
 
     Notification.objects.create(

@@ -3,7 +3,7 @@
 import logging
 
 from orders.services.razorpay_service import RazorpayService
-from .base import BaseAction
+from orders.actions.base import BaseAction
 
 logger = logging.getLogger(__name__)
 

@@ -46,6 +46,16 @@ class VendorBankDetailsSerializer(serializers.ModelSerializer):
     account_number = serializers.CharField(write_only=True, required=False, allow_blank=True)
     masked_account = serializers.CharField(source="masked_account_number", read_only=True)
 
+    def validate_commission_percentage(self, value):
+        if value < 0 or value > 100:
+            raise serializers.ValidationError('Commission percentage must be between 0 and 100.')
+        return value
+
+    def validate_account_number(self, value):
+        if value and (not value.isdigit() or not 9 <= len(value) <= 18):
+            raise serializers.ValidationError('Account number must contain 9 to 18 digits.')
+        return value
+
     class Meta:
         model = VendorBankDetails
         fields = [
@@ -87,7 +97,7 @@ class VendorDocumentSerializer(serializers.ModelSerializer):
         fields = [
             "id", "vendor", "document_type", "document_type_label",
             "file", "original_filename", "file_size_bytes",
-            "status", "rejection_reason",
+            "status", "rejection_reason", "expires_on",
             "verified_by_name", "verified_at", "uploaded_at",
         ]
         read_only_fields = [
@@ -117,6 +127,7 @@ class VendorDocumentSerializer(serializers.ModelSerializer):
 
 class DocumentVerifySerializer(serializers.Serializer):
     action = serializers.ChoiceField(choices=["verify", "reject"])
+    expires_on = serializers.DateField(required=False, allow_null=True)
     rejection_reason = serializers.CharField(required=False, allow_blank=True, default="")
 
     def validate(self, attrs):

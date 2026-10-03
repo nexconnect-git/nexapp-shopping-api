@@ -4,6 +4,7 @@ from rest_framework import serializers
 
 from accounts.models import Address
 from accounts.serializers import AddressSerializer
+from helpers.vendor_order_actions import vendor_order_actions
 from helpers.status_helpers import (
     normalize_order_delivery_status,
     normalize_order_status,
@@ -72,6 +73,30 @@ class OrderSerializer(serializers.ModelSerializer):
     normalized_status = serializers.SerializerMethodField()
     payment_status = serializers.SerializerMethodField()
     delivery_status = serializers.SerializerMethodField()
+    allowed_actions = serializers.SerializerMethodField()
+    state_version = serializers.SerializerMethodField()
+
+    def get_state_version(self, obj):
+        try:
+            return max(obj.updated_at, obj.assignment.updated_at).isoformat()
+        except Exception:
+            return obj.updated_at.isoformat()
+
+    def get_allowed_actions(self, obj):
+        user = getattr(self.context.get('request'), 'user', None)
+        if self.context.get('vendor_scope') or (user and user.is_authenticated and user.role == 'vendor' and obj.vendor.user_id == user.pk):
+            return vendor_order_actions(obj, self.get_assignment_status(obj))
+        return []
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        user = getattr(self.context.get('request'), 'user', None)
+        is_admin = bool(user and user.is_authenticated and user.role == 'admin')
+        if not is_admin and not (user and user.is_authenticated and instance.customer_id == user.pk):
+            data.pop('delivery_otp', None)
+        if not is_admin and not (user and user.is_authenticated and instance.delivery_partner_id == user.pk):
+            data.pop('pickup_otp', None)
+        return data
 
     class Meta:
         model = Order
@@ -81,7 +106,7 @@ class OrderSerializer(serializers.ModelSerializer):
             "fulfillment_promise_id", "fulfillment_promise_expires_at",
             "delivery_address", "delivery_partner",
             "delivery_partner_info", "status", "normalized_status", "payment_status",
-            "delivery_status", "assignment_status", "invoice_id",
+            "delivery_status", "assignment_status", "allowed_actions", "state_version", "invoice_id",
             "has_rating", "vendor_rating", "vendor_comment", "delivery_rating", "delivery_comment",
             "payment_method", "subtotal", "delivery_fee", "discount",
             "product_discount", "coupon_discount", "platform_fee", "packaging_fee",
@@ -106,8 +131,8 @@ class OrderSerializer(serializers.ModelSerializer):
             "id": str(vendor.id),
             "store_name": vendor.store_name,
             "address": vendor.address,
-            "latitude": str(vendor.latitude) if vendor.latitude else None,
-            "longitude": str(vendor.longitude) if vendor.longitude else None,
+            "latitude": str(vendor.latitude) if vendor.latitude is not None else None,
+            "longitude": str(vendor.longitude) if vendor.longitude is not None else None,
             "phone": vendor.phone,
         }
 

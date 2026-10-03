@@ -3,6 +3,7 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.contrib.auth import get_user_model
 from orders.models import OrderIssue
+from accounts.admin_access import allows, current_session_user
 
 class IssueChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
@@ -33,6 +34,9 @@ class IssueChatConsumer(AsyncWebsocketConsumer):
             )
 
     async def chat_message(self, event):
+        if not await self.check_issue_access(self.issue_id, self.scope['user']):
+            await self.close(code=4403)
+            return
         message_data = event['message']
         await self.send(text_data=json.dumps({
             'type': 'chat_message',
@@ -41,8 +45,11 @@ class IssueChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def check_issue_access(self, issue_id, user):
+        user=current_session_user(user)
+        if not user:
+            return False
         try:
             issue = OrderIssue.objects.get(id=issue_id)
-            return user.role == 'admin' or issue.customer == user
+            return allows(user, 'support.view') or issue.customer == user
         except OrderIssue.DoesNotExist:
             return False

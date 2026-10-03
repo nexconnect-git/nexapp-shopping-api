@@ -47,6 +47,8 @@ class RegisterAction:
         """
         if self._data.get('role', 'customer') == 'customer':
             raise ValueError('Customer accounts must be created with mobile OTP.')
+        if self._data.get('role') != 'vendor':
+            raise ValueError('This account role cannot be registered publicly.')
 
         serializer = UserRegistrationSerializer(data=self._data)
         serializer.is_valid(raise_exception=True)

@@ -6,58 +6,24 @@ import logging
 from datetime import date, datetime, timedelta
 from django_rq import job
 
+from notifications.actions import GeneratePlatformReportAction, SendScheduledBulkNotificationAction
+from vendors.actions import UpdateAdminPayoutAction
+
 logger = logging.getLogger(__name__)
 
 
 @job('default')
-def generate_vendor_payouts(payout_id: str):
-    """
-    Legacy task — now only used for direct status override testing.
-    New flow uses the approval/verification lifecycle instead.
-    """
-    from vendors.models import VendorPayout
-    from django.utils import timezone
+def generate_vendor_payouts(payout_id: str, transaction_ref: str = ''):
+    payout = UpdateAdminPayoutAction().execute('vendor', payout_id, 'record_payment', {'transaction_ref': transaction_ref})
+    return {'id': str(payout.pk), 'status': payout.status}
 
-    try:
-        payout = VendorPayout.objects.get(id=payout_id)
-        if payout.status not in ('paid', 'verified'):
-            payout.status = 'paid'
-            payout.paid_at = timezone.now()
-            payout.save(update_fields=['status', 'paid_at'])
-            logger.info(f"[generate_vendor_payouts] Processed payout {payout_id}")
-        else:
-            logger.info(f"[generate_vendor_payouts] Payout {payout_id} already finalised.")
-    except VendorPayout.DoesNotExist:
-        logger.error(f"[generate_vendor_payouts] Payout {payout_id} not found.")
-        raise
-    except Exception as e:
-        logger.error(f"[generate_vendor_payouts] Error: {e}")
-        raise
 
 
 @job('default')
-def generate_delivery_payouts(payout_id: str):
-    """
-    Legacy task — now only used for direct status override testing.
-    """
-    from vendors.models import DeliveryPartnerPayout
-    from django.utils import timezone
+def generate_delivery_payouts(payout_id: str, transaction_ref: str = ''):
+    payout = UpdateAdminPayoutAction().execute('delivery', payout_id, 'record_payment', {'transaction_ref': transaction_ref})
+    return {'id': str(payout.pk), 'status': payout.status}
 
-    try:
-        payout = DeliveryPartnerPayout.objects.get(id=payout_id)
-        if payout.status not in ('paid', 'verified'):
-            payout.status = 'paid'
-            payout.paid_at = timezone.now()
-            payout.save(update_fields=['status', 'paid_at'])
-            logger.info(f"[generate_delivery_payouts] Processed payout {payout_id}")
-        else:
-            logger.info(f"[generate_delivery_payouts] Payout {payout_id} already finalised.")
-    except DeliveryPartnerPayout.DoesNotExist:
-        logger.error(f"[generate_delivery_payouts] Payout {payout_id} not found.")
-        raise
-    except Exception as e:
-        logger.error(f"[generate_delivery_payouts] Error: {e}")
-        raise
 
 
 @job('default')
@@ -178,56 +144,16 @@ def remind_unverified_payouts():
 
 @job('default')
 def generate_platform_report():
-    """
-    Generate and log a snapshot of platform statistics.
-    """
-    from accounts.models import User
-    from orders.models import Order
-    from vendors.models import Vendor
-    from django.db.models import Sum, Count
+    report = GeneratePlatformReportAction().execute()
+    logger.info('[generate_platform_report] Stats snapshot: %s', report)
+    return report
 
-    try:
-        stats = {
-            'total_orders': Order.objects.count(),
-            'delivered_orders': Order.objects.filter(status='delivered').count(),
-            'total_revenue': str(Order.objects.filter(status='delivered').aggregate(s=Sum('total'))['s'] or 0),
-            'total_vendors': Vendor.objects.count(),
-            'total_users': User.objects.count(),
-            'generated_at': date.today().isoformat(),
-        }
-        logger.info(f"[generate_platform_report] Stats snapshot: {stats}")
-        return stats
-    except Exception as e:
-        logger.error(f"[generate_platform_report] Error: {e}")
-        raise
 
 
 @job('default')
 def send_bulk_notification(title: str, message: str, target: str = 'all'):
-    """
-    Send a notification to all users matching 'target' (all / vendors / customers / delivery).
-    """
-    from accounts.models import User
-    from notifications.models import Notification
+    return SendScheduledBulkNotificationAction().execute(title, message, target)
 
-    try:
-        qs = User.objects.filter(is_active=True)
-        if target == 'vendors':
-            qs = qs.filter(role='vendor')
-        elif target == 'customers':
-            qs = qs.filter(role='customer')
-        elif target == 'delivery':
-            qs = qs.filter(role='delivery')
-
-        notifications = [
-            Notification(user=u, title=title, message=message, notification_type='system')
-            for u in qs
-        ]
-        Notification.objects.bulk_create(notifications, batch_size=500)
-        logger.info(f"[send_bulk_notification] Sent '{title}' to {len(notifications)} users (target={target})")
-    except Exception as e:
-        logger.error(f"[send_bulk_notification] Error: {e}")
-        raise
 
 
 @job('default')

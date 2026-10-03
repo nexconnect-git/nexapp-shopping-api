@@ -7,6 +7,9 @@ from django.utils.text import slugify
 
 from products.data.catalog_repository import CatalogProductRepository, VendorCatalogGrantRepository
 from products.models import Product
+from products.data.vendor_inheritance_repository import VendorInheritanceRepository
+from vendors.data.workspace_repository import VendorWorkspaceRepository
+from rest_framework.exceptions import NotFound, ValidationError
 
 
 class CreateVendorProductFromCatalogAction:
@@ -75,52 +78,38 @@ class CreateVendorProductFromCatalogAction:
             'quantity_normalized': quantity_value,
             'unit_normalized': normalized_unit,
         }
-        return Product.objects.create(**payload)
+        return VendorInheritanceRepository().create(**payload)
 
     def _ensure_no_duplicate_variant(self, vendor, catalog_product, brand_normalized, quantity_normalized, unit_normalized, ignore_id=None):
-        queryset = Product.objects.filter(
-            vendor=vendor,
-            catalog_product=catalog_product,
-            brand_normalized=brand_normalized,
-            quantity_normalized=quantity_normalized,
-            unit_normalized=unit_normalized,
-        )
-        if ignore_id:
-            queryset = queryset.exclude(pk=ignore_id)
-        if queryset.exists():
+        if VendorInheritanceRepository().duplicate_exists(vendor, catalog_product, brand_normalized, quantity_normalized, unit_normalized, ignore_id):
             raise ValueError('Duplicate variant detected for this catalog item. Please adjust brand, quantity, or unit.')
 
     def _unique_product_slug(self, name):
         base = slugify(name) or 'product'
         candidate = base
         counter = 1
-        while Product.objects.filter(slug=candidate).exists():
+        while VendorInheritanceRepository().slug_exists(candidate):
             candidate = f'{base}-{counter}'
             counter += 1
         return candidate
 
 
 class CreateInheritedProductDraftBatchAction(CreateVendorProductFromCatalogAction):
-    def execute(self, vendor, catalog_product_ids):
-        if not catalog_product_ids:
-            raise ValueError('At least one catalog product must be selected.')
-        batch_id = uuid.uuid4()
-        created = []
-        for catalog_product_id in catalog_product_ids:
-            created.append(
-                super().execute(
-                    vendor=vendor,
-                    catalog_product_id=catalog_product_id,
-                    selling_data={
-                        'price': Decimal('0.00'),
-                        'stock': 0,
-                        'status': 'draft',
-                        'is_available': False,
-                        'approval_status': Product.APPROVAL_STATUS_DRAFT,
-                        'submission_batch_id': batch_id,
-                    },
-                )
-            )
+    @transaction.atomic
+    def execute(self, vendor, catalog_product_ids, batch_id=None):
+        if not catalog_product_ids or len(set(catalog_product_ids)) != len(catalog_product_ids):
+            raise ValueError('Select unique catalog products.')
+        VendorWorkspaceRepository().locked(vendor)
+        batch_id = batch_id or uuid.uuid4()
+        existing = list(VendorInheritanceRepository().batch(vendor, batch_id))
+        if existing:
+            if {product.catalog_product_id for product in existing} != set(catalog_product_ids):
+                raise ValueError('This draft batch belongs to a different selection.')
+            return batch_id, existing
+        created = [super(CreateInheritedProductDraftBatchAction, self).execute(vendor, product_id, {
+            'price': Decimal('0.00'), 'stock': 0, 'status': 'draft', 'is_available': False,
+            'approval_status': Product.APPROVAL_STATUS_DRAFT, 'submission_batch_id': batch_id,
+        }) for product_id in catalog_product_ids]
         return batch_id, created
 
 
@@ -128,7 +117,7 @@ class DuplicateInheritedProductAction(CreateVendorProductFromCatalogAction):
     def execute(self, vendor, product):
         if product.vendor_id != vendor.id:
             raise ValueError('Product not found.')
-        return Product.objects.create(
+        return VendorInheritanceRepository().create(
             vendor=vendor,
             catalog_product=product.catalog_product,
             category=product.category,
@@ -174,18 +163,23 @@ class DuplicateInheritedProductAction(CreateVendorProductFromCatalogAction):
 
 
 class SubmitInheritedProductBatchAction(CreateVendorProductFromCatalogAction):
-    def execute(self, vendor, product_ids):
+    @transaction.atomic
+    def execute(self, vendor, product_ids, approval_note=""):
         if not product_ids:
             raise ValueError('Select at least one variant to submit.')
-        variants = Product.objects.filter(vendor=vendor, id__in=product_ids).select_related('catalog_product')
-        if variants.count() != len(product_ids):
+        VendorWorkspaceRepository().locked(vendor)
+        variants = list(VendorInheritanceRepository().selected_locked(vendor, product_ids))
+        if len(variants) != len(set(product_ids)) or len(product_ids) != len(set(product_ids)):
             raise ValueError('Some selected variants were not found.')
+        if any(item.approval_status not in {Product.APPROVAL_STATUS_DRAFT, Product.APPROVAL_STATUS_REJECTED} for item in variants):
+            raise ValueError("Only draft or rejected variants can be submitted.")
         errors = self._validate_variants(vendor, variants)
         if errors:
             raise ValueError(errors)
         updated = []
         with transaction.atomic():
             for variant in variants:
+                variant.approval_note = approval_note
                 variant.approval_status = Product.APPROVAL_STATUS_PENDING
                 variant.rejection_reason = ''
                 variant.reviewed_by = None
@@ -197,9 +191,10 @@ class SubmitInheritedProductBatchAction(CreateVendorProductFromCatalogAction):
                     variant.weight,
                     variant.unit,
                 )
-                variant.save(
-                    update_fields=[
+                VendorInheritanceRepository().save(variant, fields=[
                         'approval_status',
+                        'approval_note',
+                        'updated_at',
                         'rejection_reason',
                         'reviewed_by',
                         'reviewed_at',
@@ -218,6 +213,16 @@ class SubmitInheritedProductBatchAction(CreateVendorProductFromCatalogAction):
         for variant in variants:
             if not variant.catalog_product_id:
                 errors[str(variant.id)] = ['Catalog base is required.']
+                continue
+            if not variant.catalog_product.is_active or not VendorCatalogGrantRepository().has_grant(vendor, variant.catalog_product):
+                errors[str(variant.id)] = ['Catalog item is no longer available to this store.']
+                continue
+            missing = [label for field, label in [('name', 'Name'), ('brand', 'Brand'), ('weight', 'Pack size'), ('unit', 'Unit'), ('description', 'Description')] if not str(getattr(variant, field, '') or '').strip()]
+            if missing:
+                errors[str(variant.id)] = [', '.join(missing) + ' required before submission.']
+                continue
+            if not variant.is_instant_delivery and not variant.is_scheduled_delivery:
+                errors[str(variant.id)] = ['Enable at least one delivery mode.']
                 continue
             if variant.price is None or variant.price <= 0:
                 errors[str(variant.id)] = ['Price must be greater than zero.']
@@ -238,3 +243,19 @@ class SubmitInheritedProductBatchAction(CreateVendorProductFromCatalogAction):
             except ValueError:
                 errors[str(variant.id)] = ['Duplicate variant exists for the same catalog item.']
         return errors
+
+
+class UpdateInheritedProductDraftAction:
+    @transaction.atomic
+    def execute(self, vendor, product_id, values):
+        product = VendorInheritanceRepository().locked(vendor, product_id)
+        if not product:
+            raise NotFound('Variant not found.')
+        if product.approval_status not in {Product.APPROVAL_STATUS_DRAFT, Product.APPROVAL_STATUS_REJECTED}:
+            raise ValidationError('Use the product editor for reviewed items. Pending variants cannot be changed.')
+        values.pop('catalog_product_id', None)
+        for field, value in values.items():
+            setattr(product, field, value)
+        product.approval_status = Product.APPROVAL_STATUS_DRAFT
+        product.rejection_reason = ''
+        return VendorInheritanceRepository().save(product)

@@ -53,8 +53,6 @@ class DeliveryPartnerSerializer(serializers.ModelSerializer):
             'created_at': obj.user.created_at,
             'updated_at': obj.user.updated_at,
         }
-        if obj.user.force_password_change and obj.user.temp_password:
-            data['temp_password'] = obj.user.temp_password
         return data
 
     def validate_id_proof(self, value):
@@ -149,12 +147,10 @@ class DeliveryPartnerRegistrationSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         password = validated_data.get('password')
-        temporary_password = password
         auto_generated_password = None
         if not password:
-            auto_generated_password = get_random_string(12)
+            auto_generated_password = get_random_string(48)
             password = auto_generated_password
-            temporary_password = auto_generated_password
 
         user = User.objects.create_user(
             username=validated_data['username'],
@@ -166,7 +162,7 @@ class DeliveryPartnerRegistrationSerializer(serializers.Serializer):
             role='delivery',
         )
         user.force_password_change = True
-        user.temp_password = temporary_password
+        user.temp_password = ''
         user.save(update_fields=['force_password_change', 'temp_password'])
 
         partner = DeliveryPartner.objects.create(
@@ -176,8 +172,6 @@ class DeliveryPartnerRegistrationSerializer(serializers.Serializer):
             license_number=validated_data['license_number'],
             id_proof=validated_data.get('id_proof'),
         )
-        if auto_generated_password:
-            partner.auto_generated_password = auto_generated_password
         return partner
 
 

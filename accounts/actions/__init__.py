@@ -8,6 +8,7 @@ from accounts.actions.auth_actions import (
 from accounts.actions.profile_actions import UpdateProfileAction, ChangePasswordAction
 from accounts.actions.admin_actions import GetAdminStatsAction, ManageCustomerAction
 from accounts.actions.audit_actions import CreateAdminAuditLogAction
+from accounts.actions.password_reset_actions import RequestAccountPasswordResetAction, ConfirmAccountPasswordResetAction
 
 __all__ = [
     'RegisterAction',

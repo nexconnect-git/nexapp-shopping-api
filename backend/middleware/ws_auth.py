@@ -5,6 +5,7 @@ from channels.middleware import BaseMiddleware
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from rest_framework_simplejwt.tokens import AccessToken
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
 User = get_user_model()
 WS_AUTH_SUBPROTOCOL = 'nexconnect.jwt'
@@ -14,8 +15,7 @@ WS_AUTH_SUBPROTOCOL = 'nexconnect.jwt'
 def get_user_from_token(token):
     try:
         access_token = AccessToken(token)
-        user_id = access_token['user_id']
-        return User.objects.get(id=user_id)
+        return JWTAuthentication().get_user(access_token)
     except Exception:
         return AnonymousUser()
 

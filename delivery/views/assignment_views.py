@@ -30,7 +30,7 @@ class AcceptDeliveryView(APIView):
     def post(self, request, pk):
         try:
             order = AcceptDeliveryAction.execute(str(pk), request.user)
-            return Response(OrderSerializer(order).data)
+            return Response(OrderSerializer(order, context={'request': request}).data)
         except ValueError as exc:
             if "not found" in str(exc).lower():
                 return Response({"error": str(exc)}, status=status.HTTP_404_NOT_FOUND)
@@ -44,7 +44,7 @@ class UpdateDeliveryStatusView(APIView):
         new_status = request.data.get("status")
         try:
             order = UpdateDeliveryStatusAction.execute(str(pk), new_status, request.user)
-            return Response(OrderSerializer(order).data)
+            return Response(OrderSerializer(order, context={'request': request}).data)
         except ValueError as exc:
             if "not found" in str(exc).lower():
                 return Response({"error": str(exc)}, status=status.HTTP_404_NOT_FOUND)
@@ -68,7 +68,7 @@ class ConfirmDeliveryView(APIView):
 
         try:
             order = ConfirmDeliveryAction.execute(str(pk), request.user, submitted_otp, photo, transaction_photo=transaction_photo)
-            return Response(OrderSerializer(order).data)
+            return Response(OrderSerializer(order, context={'request': request}).data)
         except ValueError as exc:
             if "not found" in str(exc).lower():
                 return Response({"error": str(exc)}, status=status.HTTP_404_NOT_FOUND)
@@ -107,7 +107,7 @@ class AcceptAssignmentView(APIView):
     def post(self, request, assignment_id):
         try:
             order = AcceptAssignmentAction.execute(str(assignment_id), request.user)
-            return Response({"status": "accepted", "order": OrderSerializer(order).data})
+            return Response({"status": "accepted", "order": OrderSerializer(order, context={'request': request}).data})
         except ValueError as exc:
             if "not found" in str(exc).lower():
                 return Response({"error": str(exc)}, status=status.HTTP_404_NOT_FOUND)

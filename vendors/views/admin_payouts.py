@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import HasAdminPermission
+from vendors.actions import CreateAdminPayoutAction, UpdateAdminPayoutAction
 from accounts.actions.audit_actions import CreateAdminAuditLogAction
 from vendors.models import VendorPayout
 from vendors.serializers import VendorPayoutSerializer
@@ -22,6 +23,10 @@ class AdminVendorPayoutListView(APIView):
     """GET /api/admin/payouts/vendors/ — list all vendor payouts."""
     permission_classes = [IsAuthenticated, HasAdminPermission]
     required_admin_permission = 'finance.manage'
+
+    def post(self, request):
+        payout = CreateAdminPayoutAction().execute('vendor', request.data, request)
+        return Response(VendorPayoutSerializer(payout).data, status=status.HTTP_201_CREATED)
 
     def get(self, request):
         qs = VendorPayout.objects.select_related("vendor").order_by("-period_start")
@@ -59,21 +64,8 @@ class AdminVendorPayoutDetailView(APIView):
         return Response(VendorPayoutSerializer(payout).data)
 
     def patch(self, request, pk):
-        payout = self._get(pk)
-        if not payout:
-            return Response({"error": "Not found."}, status=status.HTTP_404_NOT_FOUND)
-        serializer = VendorPayoutSerializer(payout, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        CreateAdminAuditLogAction().execute(
-            request=request,
-            action='payout',
-            entity_type='vendor_payout',
-            entity_id=str(payout.id),
-            summary=f"Updated vendor payout {payout.id}.",
-            metadata=request.data,
-        )
-        return Response(serializer.data)
+        payout = UpdateAdminPayoutAction().execute('vendor', pk, 'edit', request.data, request=request)
+        return Response(VendorPayoutSerializer(payout).data)
 
 
 class AdminVendorPayoutScheduleView(APIView):
@@ -82,21 +74,7 @@ class AdminVendorPayoutScheduleView(APIView):
     required_admin_permission = 'finance.manage'
 
     def post(self, request, pk):
-        try:
-            payout = VendorPayout.objects.get(pk=pk)
-        except VendorPayout.DoesNotExist:
-            return Response({"error": "Not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        payout.status = "scheduled"
-        payout.save(update_fields=["status"])
-        CreateAdminAuditLogAction().execute(
-            request=request,
-            action='payout',
-            entity_type='vendor_payout',
-            entity_id=str(payout.id),
-            summary=f"Scheduled vendor payout {payout.id}.",
-            metadata={'status': 'scheduled'},
-        )
+        payout = UpdateAdminPayoutAction().execute('vendor', pk, 'schedule', request.data, request=request)
         return Response(VendorPayoutSerializer(payout).data)
 
 
@@ -106,42 +84,7 @@ class AdminVendorPayoutSendPaymentView(APIView):
     required_admin_permission = 'finance.manage'
 
     def post(self, request, pk):
-        try:
-            payout = VendorPayout.objects.get(pk=pk)
-        except VendorPayout.DoesNotExist:
-            return Response({"error": "Not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        transaction_ref = request.data.get("transaction_ref", "")
-        
-        # Only deduct wallet balance if the payout wasn't already Paid
-        if payout.status != "paid":
-            payout.status = "paid"
-            payout.transaction_ref = transaction_ref
-            payout.payment_sent_at = timezone.now()
-            payout.paid_at = timezone.now()
-            payout.save(update_fields=["status", "transaction_ref", "payment_sent_at", "paid_at"])
-            
-            # Debit Vendor Wallet
-            from vendors.actions.wallet_actions import VendorWalletAction
-            try:
-                VendorWalletAction.debit_vendor(
-                    vendor_id=str(payout.vendor.id),
-                    amount=payout.net_payout,
-                    source='payout_withdrawal',
-                    reference_id=str(payout.id),
-                    description=f"Withdrawal for Payout to {payout.vendor.store_name}"
-                )
-            except ValueError:
-                pass # Already handled or balance too low
-
-        CreateAdminAuditLogAction().execute(
-            request=request,
-            action='payout',
-            entity_type='vendor_payout',
-            entity_id=str(payout.id),
-            summary=f"Marked vendor payout {payout.id} as paid.",
-            metadata={'status': payout.status, 'transaction_ref': transaction_ref},
-        )
+        payout = UpdateAdminPayoutAction().execute('vendor', pk, 'record_payment', request.data, request=request)
         return Response(VendorPayoutSerializer(payout).data)
 
 
@@ -151,20 +94,5 @@ class AdminVendorPayoutForcePaidView(APIView):
     required_admin_permission = 'finance.manage'
 
     def post(self, request, pk):
-        try:
-            payout = VendorPayout.objects.get(pk=pk)
-        except VendorPayout.DoesNotExist:
-            return Response({"error": "Not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        payout.status = "verified"
-        payout.vendor_verified_at = timezone.now()
-        payout.save(update_fields=["status", "vendor_verified_at"])
-        CreateAdminAuditLogAction().execute(
-            request=request,
-            action='payout',
-            entity_type='vendor_payout',
-            entity_id=str(payout.id),
-            summary=f"Force-verified vendor payout {payout.id}.",
-            metadata={'status': 'verified'},
-        )
+        payout = UpdateAdminPayoutAction().execute('vendor', pk, 'verify_override', request.data, request=request)
         return Response(VendorPayoutSerializer(payout).data)

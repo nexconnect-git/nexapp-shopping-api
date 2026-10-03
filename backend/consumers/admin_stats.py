@@ -1,13 +1,14 @@
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
+from accounts.admin_access import allows, current_session_user
 from accounts.actions.admin_actions import GetAdminStatsAction
 
 class AdminStatsConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         self.room_group_name = 'admin_stats'
 
-        if not self.scope['user'].is_authenticated or self.scope['user'].role != 'admin':
+        if not await self.has_access():
             await self.close()
             return
 
@@ -31,6 +32,9 @@ class AdminStatsConsumer(AsyncWebsocketConsumer):
             )
 
     async def update_stats(self, event):
+        if not await self.has_access():
+            await self.close(code=4403)
+            return
         stats = await self.get_stats()
         await self.send(text_data=json.dumps({
             'type': 'stats_update',
@@ -39,4 +43,10 @@ class AdminStatsConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def get_stats(self):
-        return GetAdminStatsAction().execute()
+        current = current_session_user(self.scope['user'])
+        return GetAdminStatsAction().execute(current) if allows(current, 'overview.view') else {}
+
+    @database_sync_to_async
+    def has_access(self):
+        current=current_session_user(self.scope['user'])
+        return allows(current, 'overview.view')

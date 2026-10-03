@@ -68,7 +68,7 @@ class VerifyWalletTopUpView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        required = ['razorpay_order_id', 'razorpay_payment_id', 'razorpay_signature', 'amount']
+        required = ['razorpay_order_id', 'razorpay_payment_id', 'razorpay_signature']
         missing = [f for f in required if not request.data.get(f)]
         if missing:
             return Response(
@@ -77,17 +77,11 @@ class VerifyWalletTopUpView(APIView):
             )
 
         try:
-            amount_float = float(request.data['amount'])
-        except (TypeError, ValueError):
-            return Response({'amount': 'Must be a valid number.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
             wallet = VerifyWalletTopUpAction.execute(
                 user=request.user,
                 razorpay_order_id=request.data['razorpay_order_id'],
                 razorpay_payment_id=request.data['razorpay_payment_id'],
                 razorpay_signature=request.data['razorpay_signature'],
-                amount_inr=amount_float,
             )
             return Response({'balance': str(wallet.balance)})
         except ValueError as exc:

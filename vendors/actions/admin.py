@@ -1,8 +1,10 @@
 from django.db import transaction
 from django.utils import timezone
+from rest_framework.exceptions import ValidationError
+from backend.data.admin_console_repository import AdminConsoleRepository
 from vendors.actions.base import BaseAction
 
-from vendors.models import Vendor, VendorDocument, VendorOnboarding, VendorAuditLog
+from vendors.models import Vendor, VendorOnboarding
 from backend.events import vendor_approved
 
 VENDOR_REVIEW_STATUSES = {
@@ -24,7 +26,7 @@ def _create_audit_log(vendor: Vendor, action: str, description: str, request=Non
     if request:
         x_forwarded = request.META.get("HTTP_X_FORWARDED_FOR")
         ip = x_forwarded.split(",")[0] if x_forwarded else request.META.get("REMOTE_ADDR")
-    VendorAuditLog.objects.create(
+    AdminConsoleRepository.create_vendor_audit(
         vendor=vendor, action=action, description=description,
         performed_by=request.user if request else None,
         ip_address=ip, metadata=metadata,
@@ -107,23 +109,24 @@ class UpdateVendorStatusAction(BaseAction):
 
 class VerifyVendorDocumentAction(BaseAction):
     @transaction.atomic
-    def execute(self, vendor_id: str, doc_id: str, action: str, reason: str, user, request=None):
-        try:
-            vendor = Vendor.objects.get(pk=vendor_id)
-        except Vendor.DoesNotExist:
-            raise ValueError("Vendor not found.")
-
-        try:
-            vendor_document = VendorDocument.objects.get(pk=doc_id, vendor=vendor)
-        except VendorDocument.DoesNotExist:
-            raise ValueError("Document not found.")
+    def execute(self, vendor_id: str, doc_id: str, action: str, reason: str, user, request=None, expires_on=None):
+        vendor_document = AdminConsoleRepository.vendor_document(vendor_id, doc_id)
+        vendor = vendor_document.vendor
+        expiry = expires_on if expires_on is not None else vendor_document.expires_on
+        if action == 'verify' and expiry and expiry < timezone.localdate():
+            raise ValidationError({'expires_on': 'An expired document cannot be verified.'})
+        if action not in ('verify', 'reject'):
+            raise ValidationError({'action': 'Choose verify or reject.'})
+        if action == 'reject' and not reason.strip():
+            raise ValidationError({'rejection_reason': 'A rejection reason is required.'})
+        vendor_document.expires_on = expiry
 
         if action == "verify":
             vendor_document.status = "verified"
             vendor_document.rejection_reason = ""
             vendor_document.verified_by = user
             vendor_document.verified_at = timezone.now()
-            _create_audit_log(vendor, "document_verified", f"Document verified: {vendor_document.get_document_type_display()}", request)
+            _create_audit_log(vendor, "document_verified", f"Document verified: {vendor_document.get_document_type_display()}", request, metadata={'document_id': str(vendor_document.pk), 'expires_on': str(expiry) if expiry else None})
         else:
             vendor_document.status = "rejected"
             vendor_document.rejection_reason = reason

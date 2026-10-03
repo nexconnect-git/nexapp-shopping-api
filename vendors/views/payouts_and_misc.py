@@ -1,7 +1,3 @@
-import uuid
-from datetime import timedelta
-
-from django.utils import timezone
 from rest_framework import generics, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.views import APIView
@@ -9,125 +5,97 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 
 from accounts.permissions import IsApprovedVendor
-from orders.models import Coupon
-from orders.serializers import CouponSerializer
+from vendors.serializers.coupons import VendorCouponSerializer
 from vendors.models import Vendor, VendorPayout, VendorReview
 from vendors.serializers import VendorPayoutSerializer, VendorReviewSerializer
 from vendors.helpers.public_vendor_helpers import StandardPagination
+from vendors.actions import UpdateVendorRecipientPayoutAction, VendorCouponAction
+from vendors.data.finance_repository import VendorFinanceRepository, VendorCouponRepository
+from vendors.data.feedback_repository import VendorFeedbackRepository
+from vendors.data import VendorRepository
+from vendors.serializers.wallet import VendorWalletTransactionSerializer
+from django.http import FileResponse
+from vendors.actions import GenerateVendorPayoutStatementAction
+
+
+class VendorPayoutStatementView(APIView):
+    permission_classes = [IsAuthenticated, IsApprovedVendor]
+
+    def get(self, request, pk):
+        document = GenerateVendorPayoutStatementAction().execute(request.user.vendor_profile, pk)
+        return FileResponse(document, as_attachment=True, filename=f'settlement-{pk}.pdf', content_type='application/pdf')
 
 class VendorPayoutListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated, IsApprovedVendor]
     serializer_class = VendorPayoutSerializer
 
     def get_queryset(self):
-        return VendorPayout.objects.filter(vendor__user=self.request.user)
+        return VendorFinanceRepository().payouts(self.request.user.vendor_profile, self.request.query_params)
+
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        response.data['payout_summary'] = VendorFinanceRepository().payout_summary(request.user.vendor_profile)
+        response.data['summary_scope'] = 'all_time'
+        return response
 
 class VendorWalletTransactionListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated, IsApprovedVendor]
-    from vendors.serializers.wallet import VendorWalletTransactionSerializer
     serializer_class = VendorWalletTransactionSerializer
 
     def get_queryset(self):
-        from vendors.models.vendor_wallet import VendorWalletTransaction
-        return VendorWalletTransaction.objects.filter(
-            vendor__user=self.request.user
-        ).order_by('-created_at')
+        return VendorFinanceRepository().transactions(self.request.user.vendor_profile, self.request.query_params)
 
 class VendorPayoutApproveView(APIView):
     permission_classes = [IsAuthenticated, IsApprovedVendor]
 
     def post(self, request, pk):
-        try:
-            payout = VendorPayout.objects.get(pk=pk, vendor__user=request.user)
-        except VendorPayout.DoesNotExist:
-            return Response({"error": "Payout not found."}, status=status.HTTP_404_NOT_FOUND)
-        if payout.status != "pending_approval":
-            return Response({"error": "Only payouts pending approval can be approved."}, status=status.HTTP_400_BAD_REQUEST)
-        payout.status = "approved"
-        payout.vendor_approved_at = timezone.now()
-        payout.vendor_rejection_reason = ""
-        payout.save(update_fields=["status", "vendor_approved_at", "vendor_rejection_reason"])
+        payout = UpdateVendorRecipientPayoutAction().execute(pk, 'approve', request)
         return Response(VendorPayoutSerializer(payout).data)
 
 class VendorPayoutDeclineView(APIView):
     permission_classes = [IsAuthenticated, IsApprovedVendor]
 
     def post(self, request, pk):
-        try:
-            payout = VendorPayout.objects.get(pk=pk, vendor__user=request.user)
-        except VendorPayout.DoesNotExist:
-            return Response({"error": "Payout not found."}, status=status.HTTP_404_NOT_FOUND)
-        if payout.status != "pending_approval":
-            return Response({"error": "Only payouts pending approval can be declined."}, status=status.HTTP_400_BAD_REQUEST)
-        payout.status = "failed"
-        payout.vendor_rejection_reason = request.data.get("reason", "")
-        payout.save(update_fields=["status", "vendor_rejection_reason"])
+        payout = UpdateVendorRecipientPayoutAction().execute(pk, 'decline', request)
         return Response(VendorPayoutSerializer(payout).data)
 
 class VendorPayoutVerifyCreditView(APIView):
     permission_classes = [IsAuthenticated, IsApprovedVendor]
 
     def post(self, request, pk):
-        try:
-            payout = VendorPayout.objects.get(pk=pk, vendor__user=request.user)
-        except VendorPayout.DoesNotExist:
-            return Response({"error": "Payout not found."}, status=status.HTTP_404_NOT_FOUND)
-        if payout.status != "paid":
-            return Response({"error": "Only paid payouts can be verified."}, status=status.HTTP_400_BAD_REQUEST)
-        payout.status = "verified"
-        payout.vendor_verified_at = timezone.now()
-        payout.save(update_fields=["status", "vendor_verified_at"])
+        payout = UpdateVendorRecipientPayoutAction().execute(pk, 'verify', request)
         return Response(VendorPayoutSerializer(payout).data)
 
 class VendorCouponViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsApprovedVendor]
-    serializer_class = CouponSerializer
+    serializer_class = VendorCouponSerializer
     pagination_class = StandardPagination
 
     def get_queryset(self):
-        return Coupon.objects.filter(vendor=self.request.user.vendor_profile).order_by("-created_at")
+        return VendorCouponRepository().for_vendor(self.request.user.vendor_profile, self.request.query_params)
+
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        response.data['summary'] = VendorCouponRepository().summary(request.user.vendor_profile)
+        return response
 
     def perform_create(self, serializer):
-        serializer.save(
-            vendor=self.request.user.vendor_profile,
-            created_by=self.request.user,
-            code=serializer.validated_data["code"].strip().upper(),
-        )
+        serializer.instance = VendorCouponAction().execute(self.request.user.vendor_profile, self.request.user, 'create', values=serializer.validated_data)
 
     def perform_update(self, serializer):
-        code = serializer.validated_data.get("code")
-        if code:
-            serializer.save(code=code.strip().upper())
-        else:
-            serializer.save()
+        serializer.instance = VendorCouponAction().execute(self.request.user.vendor_profile, self.request.user, 'update', serializer.instance.pk, serializer.validated_data)
 
-    @action(detail=True, methods=["post"])
+    def perform_destroy(self, instance):
+        VendorCouponAction().execute(self.request.user.vendor_profile, self.request.user, 'delete', instance.pk)
+
+    @action(detail=True, methods=['post'])
     def duplicate(self, request, pk=None):
-        coupon = self.get_object()
-        base_code = f"{coupon.code}-COPY"
-        code = base_code[:50]
-        index = 2
-        while Coupon.objects.filter(code=code).exists():
-            suffix = f"-{index}"
-            code = f"{base_code[:50 - len(suffix)]}{suffix}"
-            index += 1
-        coupon.pk = None
-        coupon.id = uuid.uuid4()
-        coupon.code = code
-        coupon.title = f"{coupon.title} Copy"[:200]
-        coupon.used_count = 0
-        coupon.is_active = False
-        coupon.created_by = request.user
-        coupon.save()
+        coupon = VendorCouponAction().execute(request.user.vendor_profile, request.user, 'duplicate', self.get_object().pk)
         return Response(self.get_serializer(coupon).data, status=status.HTTP_201_CREATED)
 
-    @action(detail=True, methods=["post"])
+    @action(detail=True, methods=['post'])
     def reactivate(self, request, pk=None):
-        coupon = self.get_object()
-        coupon.is_active = True
-        if coupon.valid_until and coupon.valid_until < timezone.now():
-            coupon.valid_until = timezone.now() + timedelta(days=30)
-        coupon.save(update_fields=["is_active", "valid_until"])
+        coupon = VendorCouponAction().execute(request.user.vendor_profile, request.user, 'reactivate', self.get_object().pk)
         return Response(self.get_serializer(coupon).data)
 
 class VendorReviewViewSet(viewsets.ViewSet):
@@ -137,9 +105,8 @@ class VendorReviewViewSet(viewsets.ViewSet):
         if not vendor_id:
             return Response({"error": "vendor_id is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            vendor = Vendor.objects.get(id=vendor_id)
-        except Vendor.DoesNotExist:
+        vendor = VendorRepository().get_by_id(vendor_id)
+        if not vendor:
             return Response({"error": "Vendor not found."}, status=status.HTTP_404_NOT_FOUND)
 
         is_admin = bool(getattr(request.user, "role", "") == "admin")
@@ -150,5 +117,13 @@ class VendorReviewViewSet(viewsets.ViewSet):
         if not (is_admin or is_owner):
             return Response({"error": "Access denied."}, status=status.HTTP_403_FORBIDDEN)
 
-        queryset = VendorReview.objects.filter(vendor_id=vendor_id).order_by("-created_at")
-        return Response(VendorReviewSerializer(queryset, many=True).data)
+        repository = VendorFeedbackRepository()
+        queryset = repository.reviews(vendor, request.query_params)
+        if is_admin and 'page' not in request.query_params:
+            return Response(VendorReviewSerializer(queryset, many=True).data)
+        paginator = StandardPagination()
+        page = paginator.paginate_queryset(queryset, request, view=self)
+        response = paginator.get_paginated_response(VendorReviewSerializer(page, many=True).data)
+        response.data['rating_summary'] = repository.summary(vendor)
+        response.data['summary_scope'] = 'all_time'
+        return response

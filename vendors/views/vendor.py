@@ -5,7 +5,9 @@ from rest_framework.permissions import IsAuthenticated
 
 from accounts.permissions import IsApprovedVendor, IsVendor
 from vendors.serializers.public import VendorSerializer
-from vendors.actions import BulkUpdateStockAction, SetStoreStatusAction, VendorAnalyticsAction, VendorOperationsSummaryAction
+from vendors.actions import BulkUpdateStockAction, DeleteVendorProductAction, GetVendorWorkspaceAction, UpdateOwnerVendorProfileAction, UpdateVendorOperatingStateAction, VendorAnalyticsAction, VendorOperationsSummaryAction
+from vendors.serializers.workspace import VendorOperatingCommandSerializer
+from vendors.data.workspace_repository import VendorWorkspaceRepository
 from vendors.data import VendorOrderRepository, VendorProductRepository
 from products.actions import UpdateVendorProductAction
 from products.serializers import ProductSerializer, ProductCreateUpdateSerializer
@@ -20,10 +22,8 @@ class VendorProfileView(APIView):
         return Response(VendorSerializer(request.user.vendor_profile).data)
 
     def patch(self, request):
-        serializer = VendorSerializer(request.user.vendor_profile, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data)
+        vendor = UpdateOwnerVendorProfileAction().execute(request.user.vendor_profile, request.data, request)
+        return Response(VendorSerializer(vendor, context={'request': request}).data)
 
 
 class VendorStoreSettingsView(VendorProfileView):
@@ -47,7 +47,7 @@ class VendorDashboardView(APIView):
             "total_products": total_products,
             "average_rating": vendor.average_rating,
             "total_ratings": vendor.total_ratings,
-            "recent_orders": OrderSerializer(recent_orders, many=True).data,
+            "recent_orders": OrderSerializer(recent_orders, many=True, context={'request': request}).data,
             "is_open": vendor.is_open,
             "closing_time": str(vendor.closing_time) if vendor.closing_time else None,
             "require_stock_check": vendor.require_stock_check,
@@ -76,20 +76,10 @@ class SetStoreStatusView(APIView):
     permission_classes = [IsAuthenticated, IsApprovedVendor]
 
     def post(self, request):
-        vendor = request.user.vendor_profile
-        try:
-            action = SetStoreStatusAction()
-            res = action.execute(
-                vendor=vendor, 
-                is_open=request.data.get("is_open"), 
-                closing_time=request.data.get("closing_time")
-            )
-            return Response({
-                "is_open": res.is_open,
-                "closing_time": str(res.closing_time) if res.closing_time else None,
-            })
-        except ValueError as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        serializer = VendorOperatingCommandSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        vendor = UpdateVendorOperatingStateAction().execute(request.user.vendor_profile, serializer.validated_data, request)
+        return Response({**VendorSerializer(vendor).data, 'workspace': GetVendorWorkspaceAction().execute(vendor)})
 
 class BulkUpdateStockView(APIView):
     permission_classes = [IsAuthenticated, IsApprovedVendor]
@@ -106,6 +96,10 @@ class BulkUpdateStockView(APIView):
 class VendorProductViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsApprovedVendor]
     pagination_class = StandardPagination
+    search_fields = ['name', 'sku', 'category__name', 'brand']
+    filterset_fields = ['approval_status', 'is_available', 'category', 'status']
+    ordering_fields = ['name', 'price', 'stock', 'updated_at', 'created_at']
+    ordering = ['-updated_at', 'id']
 
     def get_serializer_class(self):
         if self.action in ("create", "update", "partial_update"):
@@ -113,12 +107,22 @@ class VendorProductViewSet(viewsets.ModelViewSet):
         return ProductSerializer
 
     def get_queryset(self):
-        return VendorProductRepository().get_products_for_vendor_with_growth(
+        query = VendorProductRepository().get_products_for_vendor_with_growth(
             self.request.user.vendor_profile
         )
+        return VendorWorkspaceRepository().health_filter(query, self.request.query_params.get('health'))
+
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        response.data['summary'] = VendorWorkspaceRepository().inventory_summary(request.user.vendor_profile)
+        response.data['summary_scope'] = 'all_inventory'
+        return response
 
     def perform_create(self, serializer):
         serializer.save(vendor=self.request.user.vendor_profile)
+
+    def perform_destroy(self, instance):
+        DeleteVendorProductAction().execute(self.request.user.vendor_profile, instance.pk)
 
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)

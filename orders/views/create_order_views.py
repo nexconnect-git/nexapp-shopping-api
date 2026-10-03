@@ -104,7 +104,7 @@ class CreateOrderView(APIView):
                 return Response(payload, status=status.HTTP_400_BAD_REQUEST)
             return Response({'error': str(payload)}, status=status.HTTP_400_BAD_REQUEST)
 
-        return Response(OrderSerializer(created_orders, many=True).data, status=status.HTTP_201_CREATED)
+        return Response(OrderSerializer(created_orders, many=True, context={'request': request}).data, status=status.HTTP_201_CREATED)
 
     def _validate_payment_method(self, payment_method, has_razorpay_proof):
         platform_setting = PlatformSetting.get_setting()
@@ -149,7 +149,7 @@ class CreateOrderView(APIView):
                 'delivery_address',
                 'delivery_partner',
             ).prefetch_related('items', 'tracking').all()
-            return Response(OrderSerializer(existing_orders, many=True).data)
+            return Response(OrderSerializer(existing_orders, many=True, context={'request': request}).data)
         return payment_session
 
     def _attach_paid_session(self, payment_session, created_orders, razorpay_order_id, razorpay_payment_id):

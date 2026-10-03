@@ -66,8 +66,6 @@ class VendorSerializer(serializers.ModelSerializer):
             "created_at": obj.user.created_at,
             "updated_at": obj.user.updated_at,
         }
-        if obj.user.force_password_change and obj.user.temp_password:
-            data["temp_password"] = obj.user.temp_password
         return data
 
     def get_is_open_now(self, obj) -> bool:
@@ -75,6 +73,23 @@ class VendorSerializer(serializers.ModelSerializer):
 
     def get_availability_note(self, obj) -> str:
         return get_vendor_availability(obj)[1]
+
+
+class PublicVendorSerializer(VendorSerializer):
+    """Explicit storefront contract: never serialize account or finance metadata."""
+
+    class Meta(VendorSerializer.Meta):
+        fields = [
+            'id', 'store_name', 'description', 'logo', 'banner', 'phone', 'email',
+            'address', 'city', 'state', 'postal_code', 'latitude', 'longitude',
+            'vendor_type', 'is_open', 'is_open_now', 'availability_note',
+            'opening_time', 'closing_time', 'operating_hours', 'is_accepting_orders',
+            'min_order_amount', 'delivery_radius_km', 'instant_delivery_radius_km',
+            'max_delivery_radius_km', 'base_prep_time_min', 'delivery_time_per_km_min',
+            'scheduled_buffer_min', 'fulfillment_type', 'return_policy',
+            'average_rating', 'total_ratings', 'is_featured',
+        ]
+        read_only_fields = fields
 
 
 class VendorListProductSerializer(serializers.ModelSerializer):

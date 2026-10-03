@@ -1,7 +1,6 @@
 import csv
 
 from django.http import HttpResponse
-from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -17,13 +16,22 @@ from orders.data.operations_repo import (
     TaxRuleRepository,
 )
 from orders.data.order_repo import OrderRepository
-from orders.models import FeatureFlag
+from orders.actions import MutateRefundLedgerAction, UpdatePageConfigurationAction
+from backend.serializers.admin_console_serializers import AdminPageFeatureConfigSerializer
 from orders.serializers.operations_serializers import (
     DeliveryZoneSerializer,
     FeatureFlagSerializer,
     RefundLedgerSerializer,
     TaxRuleSerializer,
 )
+
+
+class SafeCsvWriter:
+    def __init__(self, response):
+        self.writer = csv.writer(response)
+
+    def writerow(self, cells):
+        self.writer.writerow(["'" + value if isinstance(value, str) and value.startswith(('=', '+', '-', '@', '\t', '\r')) else value for value in cells])
 
 
 class AdminOperationsPagination(PageNumberPagination):
@@ -49,21 +57,7 @@ def _default_page_feature_config():
 
 
 def _page_feature_flag():
-    flag, _created = FeatureFlag.objects.get_or_create(
-        key=PAGE_FEATURE_CONFIG_KEY,
-        defaults={
-            'name': 'Page & Feature Management',
-            'description': 'Platform-wide page and feature availability configuration.',
-            'is_enabled': True,
-            'audience': 'all',
-            'rollout_percentage': 100,
-            'metadata': _default_page_feature_config(),
-        },
-    )
-    if not isinstance(flag.metadata, dict):
-        flag.metadata = _default_page_feature_config()
-        flag.save(update_fields=['metadata'])
-    return flag
+    return FeatureFlagRepository.page_configuration(_default_page_feature_config())
 
 
 def _page_feature_response(flag):
@@ -92,44 +86,9 @@ class AdminPageFeatureConfigView(APIView):
         return Response(_page_feature_response(flag))
 
     def patch(self, request):
-        flag = _page_feature_flag()
-        metadata = {**_default_page_feature_config(), **(flag.metadata or {})}
-        updated_fields = []
-
-        if 'applications' in request.data:
-            applications = request.data.get('applications')
-            if not isinstance(applications, list):
-                return Response({'applications': 'Applications must be a list.'}, status=status.HTTP_400_BAD_REQUEST)
-            metadata['applications'] = applications
-            updated_fields.append('applications')
-
-        if 'global_settings' in request.data:
-            settings_payload = request.data.get('global_settings') or {}
-            if not isinstance(settings_payload, dict):
-                return Response({'global_settings': 'Global settings must be an object.'}, status=status.HTTP_400_BAD_REQUEST)
-            metadata['global_settings'] = {
-                **_default_page_feature_config()['global_settings'],
-                **settings_payload,
-            }
-            updated_fields.append('global_settings')
-
-        if 'is_enabled' in request.data:
-            flag.is_enabled = bool(request.data.get('is_enabled'))
-            updated_fields.append('is_enabled')
-
-        metadata['version'] = int(metadata.get('version') or 1) + 1
-        flag.metadata = metadata
-        flag.updated_by = request.user
-        flag.save(update_fields=['metadata', 'is_enabled', 'updated_by', 'updated_at'])
-
-        CreateAdminAuditLogAction().execute(
-            request=request,
-            action='settings',
-            entity_type='page_feature_config',
-            entity_id=PAGE_FEATURE_CONFIG_KEY,
-            summary='Updated page and feature management configuration.',
-            metadata={'updated_fields': updated_fields, 'version': metadata['version']},
-        )
+        serializer=AdminPageFeatureConfigSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        flag=UpdatePageConfigurationAction().execute(serializer.validated_data,request,_default_page_feature_config())
         return Response(_page_feature_response(flag))
 
 
@@ -149,17 +108,7 @@ class AdminRefundLedgerListCreateView(generics.ListCreateAPIView):
         )
 
     def perform_create(self, serializer):
-        order = serializer.validated_data['order']
-        customer = serializer.validated_data.get('customer') or order.customer
-        refund = serializer.save(customer=customer, requested_by=self.request.user)
-        CreateAdminAuditLogAction().execute(
-            request=self.request,
-            action='refund_create',
-            entity_type='refund_ledger',
-            entity_id=str(refund.id),
-            summary=f"Created refund request for order #{order.order_number}.",
-            metadata={'amount': str(refund.amount), 'method': refund.method, 'status': refund.status},
-        )
+        serializer.instance = MutateRefundLedgerAction().execute(serializer.validated_data, self.request)
 
 
 class AdminRefundLedgerDetailView(generics.RetrieveUpdateAPIView):
@@ -171,42 +120,7 @@ class AdminRefundLedgerDetailView(generics.RetrieveUpdateAPIView):
         return RefundLedgerRepository.list()
 
     def perform_update(self, serializer):
-        previous_status = serializer.instance.status
-        refund = serializer.save()
-        updated_fields = []
-        if previous_status != refund.status:
-            updated_fields.append('status')
-            now = timezone.now()
-            if refund.status == 'approved' and not refund.approved_at:
-                refund.approved_by = self.request.user
-                refund.approved_at = now
-                refund.order.refund_status = 'initiated'
-                refund.order.save(update_fields=['refund_status'])
-            elif refund.status == 'processing':
-                refund.order.refund_status = 'initiated'
-                refund.order.save(update_fields=['refund_status'])
-            elif refund.status == 'processed' and not refund.processed_at:
-                refund.processed_by = self.request.user
-                refund.processed_at = now
-                refund.order.refund_status = 'processed'
-                if refund.gateway_refund_id:
-                    refund.order.razorpay_refund_id = refund.gateway_refund_id
-                    refund.order.save(update_fields=['refund_status', 'razorpay_refund_id'])
-                else:
-                    refund.order.save(update_fields=['refund_status'])
-            elif refund.status == 'failed':
-                refund.order.refund_status = 'failed'
-                refund.order.save(update_fields=['refund_status'])
-            refund.save(update_fields=['approved_by', 'approved_at', 'processed_by', 'processed_at', 'updated_at'])
-
-        CreateAdminAuditLogAction().execute(
-            request=self.request,
-            action='refund_update',
-            entity_type='refund_ledger',
-            entity_id=str(refund.id),
-            summary=f"Updated refund {refund.id}.",
-            metadata={'status': refund.status, 'updated_fields': updated_fields},
-        )
+        serializer.instance = MutateRefundLedgerAction().execute(serializer.validated_data, self.request, pk=serializer.instance.pk)
 
 
 class AdminDeliveryZoneListCreateView(generics.ListCreateAPIView):
@@ -364,7 +278,7 @@ class AdminFinanceExportView(generics.GenericAPIView):
     def _refund_export(self):
         response = HttpResponse(content_type='text/csv')
         response['Content-Disposition'] = 'attachment; filename="refunds.csv"'
-        writer = csv.writer(response)
+        writer = SafeCsvWriter(response)
         writer.writerow(['id', 'order', 'customer', 'amount', 'method', 'status', 'gateway_refund_id', 'created_at'])
         for refund in RefundLedgerRepository.list():
             writer.writerow([
@@ -382,7 +296,7 @@ class AdminFinanceExportView(generics.GenericAPIView):
     def _payment_export(self):
         response = HttpResponse(content_type='text/csv')
         response['Content-Disposition'] = 'attachment; filename="payments.csv"'
-        writer = csv.writer(response)
+        writer = SafeCsvWriter(response)
         writer.writerow(['id', 'order_number', 'customer', 'vendor', 'method', 'verified', 'total', 'placed_at'])
         queryset = OrderRepository.get_payment_export_queryset()
         for order in queryset:

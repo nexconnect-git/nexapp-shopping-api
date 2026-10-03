@@ -8,6 +8,8 @@ from django.utils import timezone
 from orders.models import InventoryReservation, Order, PaymentSession
 from products.models import Product
 from vendors.models import FulfillmentNodeInventory
+from orders.data.order_repo import OrderRepository
+from orders.data.inventory_reservation_repository import InventoryReservationRepository
 
 
 @dataclass
@@ -34,11 +36,8 @@ class ReservationInventoryAction:
     @transaction.atomic
     def release_order(self, order: Order, reason: str = "cancelled") -> ReservationReconciliationResult:
         result = ReservationReconciliationResult()
-        reservations = list(
-            InventoryReservation.objects.select_for_update()
-            .select_related("product", "fulfillment_node")
-            .filter(order=order, status=InventoryReservation.STATUS_COMMITTED)
-        )
+        order = OrderRepository.get_locked(order.pk)
+        reservations = InventoryReservationRepository.committed_for_release(order)
         now = timezone.now()
         for reservation in reservations:
             self._restore_product_stock(reservation)
@@ -56,17 +55,12 @@ class ReservationInventoryAction:
     def _restore_product_stock(self, reservation: InventoryReservation) -> None:
         if not reservation.product_id:
             return
-        Product.objects.filter(pk=reservation.product_id).update(stock=F("stock") + reservation.quantity)
-        if reservation.product and reservation.product.status == "sold_out":
-            Product.objects.filter(pk=reservation.product_id).update(status="active")
+        InventoryReservationRepository.restore_product(reservation)
 
     def _restore_node_stock(self, reservation: InventoryReservation) -> None:
         if not reservation.fulfillment_node_id:
             return
-        FulfillmentNodeInventory.objects.filter(
-            node_id=reservation.fulfillment_node_id,
-            product_id=reservation.product_id,
-        ).update(stock=F("stock") + reservation.quantity, is_available=True)
+        InventoryReservationRepository.restore_node(reservation)
 
 
 class ReconcileInventoryReservationsAction:

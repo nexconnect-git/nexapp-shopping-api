@@ -5,7 +5,9 @@ from django.utils import timezone
 from orders.models import Order, OrderTracking
 from orders.data.order_repo import OrderRepository
 from backend.events import order_status_updated
-from delivery.data.earning_repo import DeliveryEarningRepository
+from orders.actions import SettleDeliveredOrderAction
+from delivery.actions.assignment_actions import AcceptAssignmentAction
+from delivery.data.assignment_repo import DeliveryAssignmentRepository
 
 
 class AcceptDeliveryAction:
@@ -13,28 +15,13 @@ class AcceptDeliveryAction:
     @transaction.atomic
     def execute(order_id: str, user: Any) -> Order:
         try:
-            order = OrderRepository.get_by_id(order_id)
-            if order.status != "ready" or order.delivery_partner is not None:
-                raise ValueError("Order not found or already assigned.")
-        except Exception:
-            raise ValueError("Order not found or already assigned.")
-
-        partner = user.delivery_profile
-        order.delivery_partner = user
-        order.save(update_fields=["delivery_partner", "updated_at"])
-
-        partner.status = "on_delivery"
-        partner.save(update_fields=["status", "updated_at"])
-
-        OrderTracking.objects.create(
-            order=order,
-            status="ready",
-            description=f"Delivery partner {user.get_full_name() or user.username} accepted the order.",
-            latitude=partner.current_latitude,
-            longitude=partner.current_longitude,
-        )
-        order_status_updated.send(sender=Order, order=order, new_status="ready", old_status="ready")
-        return order
+            order = OrderRepository.get_locked(order_id)
+        except Order.DoesNotExist as exc:
+            raise ValueError('Order not found or no longer available.') from exc
+        assignment = DeliveryAssignmentRepository.get_locked_for_order(order)
+        if not assignment:
+            raise ValueError('Order not found or no longer available.')
+        return AcceptAssignmentAction.execute(str(assignment.pk), user)
 
 
 class UpdateDeliveryStatusAction:
@@ -42,7 +29,7 @@ class UpdateDeliveryStatusAction:
     @transaction.atomic
     def execute(order_id: str, new_status: str, user: Any) -> Order:
         try:
-            order = OrderRepository.get_by_id(order_id)
+            order = OrderRepository.get_locked(order_id)
             if order.delivery_partner != user or order.status != "picked_up":
                 raise ValueError("Order not found or not in 'picked_up' status.")
         except Exception:
@@ -84,7 +71,7 @@ class ConfirmDeliveryAction:
     @transaction.atomic
     def execute(order_id: str, user: Any, submitted_otp: str, photo: Any, transaction_photo: Any = None) -> Order:
         try:
-            order = OrderRepository.get_by_id(order_id)
+            order = OrderRepository.get_locked(order_id)
             if order.delivery_partner != user or order.status != "on_the_way":
                 raise ValueError("Order not found or not in 'on_the_way' status.")
         except Exception:
@@ -93,7 +80,7 @@ class ConfirmDeliveryAction:
         if not submitted_otp:
             raise ValueError("OTP is required.")
 
-        if order.delivery_otp and order.delivery_otp != submitted_otp:
+        if not order.delivery_otp or order.delivery_otp != submitted_otp:
             raise ValueError("Invalid OTP. Please check with the customer.")
 
         if not photo:
@@ -111,29 +98,8 @@ class ConfirmDeliveryAction:
 
         order.save(update_fields=update_fields)
 
-        # Credit Vendor Wallet for the completed sale
-        vendor = order.vendor
-        vendor_earnings = order.subtotal - order.coupon_discount
-        from vendors.actions.wallet_actions import VendorWalletAction
-        VendorWalletAction.credit_vendor(
-            vendor_id=str(vendor.id),
-            amount=vendor_earnings,
-            source='order_earning',
-            reference_id=str(order.id),
-            description=f"Earnings from Order #{order.order_number}"
-        )
-
+        SettleDeliveredOrderAction().execute(order)
         partner = user.delivery_profile
-        base_qs = OrderRepository.get_base_queryset()
-        has_active_orders = base_qs.filter(
-            delivery_partner=user, status__in=["ready", "picked_up", "on_the_way"]
-        ).exists()
-
-        partner.status = "on_delivery" if has_active_orders else "available"
-        partner.total_deliveries += 1
-        DeliveryEarningRepository.create(partner=partner, order=order, amount=order.delivery_fee)
-        partner.total_earnings += order.delivery_fee
-        partner.save(update_fields=["status", "total_deliveries", "total_earnings", "updated_at"])
 
         OrderTracking.objects.create(
             order=order,

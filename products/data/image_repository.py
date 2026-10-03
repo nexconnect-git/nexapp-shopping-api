@@ -1,10 +1,13 @@
 """Repository for ProductImage ORM queries."""
 
+from helpers.repositories import BaseRepository
 from products.models.product import Product
 from products.models.product_image import ProductImage
 
 
-class ProductImageRepository:
+class ProductImageRepository(BaseRepository):
+    def __init__(self):
+        super().__init__(ProductImage)
     """All ORM access for the ProductImage model lives here."""
 
     @staticmethod
@@ -37,6 +40,11 @@ class ProductImageRepository:
     def count_ai(product: Product) -> int:
         """Return the number of AI-generated images for the given product."""
         return product.images.filter(is_ai_generated=True).count()
+
+    @staticmethod
+    def make_primary(image):
+        image.is_primary = True
+        image.save(update_fields=['is_primary'])
 
     @staticmethod
     def clear_primary(product: Product) -> None:

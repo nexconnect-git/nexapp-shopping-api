@@ -53,7 +53,7 @@
             </tr>
             <tr>
                 <td><strong>Vendor:</strong> {{ vendor.store_name }}</td>
-                <td><strong>Status:</strong> Settlement Payment</td>
+                <td><strong>Status:</strong> {{ invoice.notes }}</td>
             </tr>
         </table>
     </div>
@@ -69,16 +69,16 @@
         <tbody>
             <tr>
                 <td>{{ order.order_number }}</td>
-                <td>Completed</td>
-                <td>${{ invoice.amount }}</td>
+                <td>See recorded status above</td>
+                <td>INR {{ invoice.amount }}</td>
             </tr>
             <tr class="total-row">
-                <td colspan="2" style="text-align: right;">Commission/Fees Deducted:</td>
-                <td>${{ invoice.tax_amount }}</td>
+                <td colspan="2" style="text-align: right;">Tax recorded on this document:</td>
+                <td>INR {{ invoice.tax_amount }}</td>
             </tr>
             <tr class="total-row">
                 <td colspan="2" style="text-align: right;">Net Payout Amount:</td>
-                <td>${{ invoice.amount }}</td>
+                <td>INR {{ invoice.amount }}</td>
             </tr>
         </tbody>
     </table>

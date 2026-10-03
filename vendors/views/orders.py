@@ -29,7 +29,7 @@ class VendorOrdersView(generics.ListAPIView):
     def get_queryset(self):
         return VendorOrderRepository().get_vendor_orders(
             vendor=self.request.user.vendor_profile,
-            status_filter=self.request.query_params.get("status")
+            status_filter=self.request.query_params.get("status"), params=self.request.query_params
         )
 
 
@@ -38,7 +38,7 @@ class VendorLiveOrdersView(APIView):
 
     def get(self, request):
         orders = VendorLiveOrdersAction().execute(request.user.vendor_profile)
-        return Response(OrderSerializer(orders, many=True).data)
+        return Response(OrderSerializer(orders, many=True, context={'request': request}).data)
 
 
 class VendorOrderDetailView(generics.RetrieveAPIView):
@@ -68,7 +68,7 @@ class VendorUpdateOrderStatusView(APIView):
         action = UpdateOrderStatusAction()
         try:
             updated_order = action.execute(order, request.data.get("status"), request.data.get("cancel_reason"))
-            return Response(OrderSerializer(updated_order).data)
+            return Response(OrderSerializer(updated_order, context={'request': request}).data)
         except ValueError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -86,7 +86,7 @@ class VendorOrderActionView(APIView):
                 updated_order = self.action_class().execute(order, request.data.get("reason", ""))
             else:
                 updated_order = self.action_class().execute(order)
-            return Response(OrderSerializer(updated_order).data)
+            return Response(OrderSerializer(updated_order, context={'request': request}).data)
         except ValueError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -118,7 +118,7 @@ class VendorVerifyPickupOtpView(APIView):
         action = VerifyPickupOtpAction()
         try:
             updated_order = action.execute(order, request.data.get("otp"))
-            return Response(OrderSerializer(updated_order).data)
+            return Response(OrderSerializer(updated_order, context={'request': request}).data)
         except ValueError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -137,7 +137,7 @@ class VendorStartDeliverySearchView(APIView):
 
         try:
             updated_order = StartDeliverySearchAction().execute(order)
-            return Response(OrderSerializer(updated_order).data)
+            return Response(OrderSerializer(updated_order, context={'request': request}).data)
         except ValueError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -156,6 +156,6 @@ class VendorCancelDeliverySearchView(APIView):
 
         try:
             updated_order = CancelDeliverySearchAction().execute(order)
-            return Response(OrderSerializer(updated_order).data)
+            return Response(OrderSerializer(updated_order, context={'request': request}).data)
         except ValueError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)

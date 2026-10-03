@@ -10,14 +10,22 @@ from notifications.actions import (
 )
 from notifications.data import NotificationRepository
 from notifications.serializers import NotificationSerializer
+from vendors.helpers.public_vendor_helpers import StandardPagination
 
 
 class NotificationListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        notifications = GetUserNotificationsAction().execute(request.user)
-        return Response(NotificationSerializer(notifications, many=True).data)
+        notifications = NotificationRepository.history_for_user(request.user, request.query_params)
+        # Preserve the existing array contract for portals not yet migrated.
+        if request.user.role != 'vendor' and 'page' not in request.query_params:
+            return Response(NotificationSerializer(notifications, many=True).data)
+        paginator = StandardPagination()
+        page = paginator.paginate_queryset(notifications, request)
+        response = paginator.get_paginated_response(NotificationSerializer(page, many=True).data)
+        response.data['unread_count'] = NotificationRepository.count_unread_for_user(request.user)
+        return response
 
 
 class MarkNotificationReadView(APIView):

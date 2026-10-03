@@ -1,9 +1,9 @@
-from django.db.models import BooleanField, Count, DecimalField, Exists, F, OuterRef, Prefetch, Q, Subquery, Sum, Value
+from django.db.models import BooleanField, Count, DecimalField, Exists, F, IntegerField, OuterRef, Prefetch, Q, Subquery, Sum, Value
 from django.db.models.functions import Coalesce
 
 from products.models import Product
 from products.data.product_repository import ProductRepository
-from orders.models import Order
+from orders.models import Order, OrderItem
 from vendors.data.base import BaseRepository
 from vendors.models import Vendor
 
@@ -147,10 +147,18 @@ class VendorRepository(BaseRepository):
     def get_all_with_users(self, search=None, status=None):
         qs = self.model.objects.select_related("user").order_by("-created_at")
         if search:
-            qs = (qs.filter(store_name__icontains=search) | self.model.objects.filter(city__icontains=search)).distinct()
+            qs = qs.filter(Q(store_name__icontains=search) | Q(city__icontains=search))
         if status:
             qs = qs.filter(status=status)
-        return qs
+        orders = Order.objects.filter(vendor=OuterRef('pk')).values('vendor').annotate(total=Count('pk')).values('total')
+        products = Product.objects.filter(vendor=OuterRef('pk')).values('vendor').annotate(total=Count('pk')).values('total')
+        return qs.annotate(_admin_order_count=Coalesce(Subquery(orders, output_field=IntegerField()), 0), _admin_product_count=Coalesce(Subquery(products, output_field=IntegerField()), 0))
+
+    def order_count(self, vendor):
+        return Order.objects.filter(vendor=vendor).count()
+
+    def product_count(self, vendor):
+        return Product.objects.filter(vendor=vendor).count()
 
 class VendorProductRepository(BaseRepository):
     def __init__(self):
@@ -220,12 +228,14 @@ class VendorProductRepository(BaseRepository):
         return qs.order_by("category__display_order", "category__name", "name")
 
     def get_products_for_vendor_with_growth(self, vendor):
-        return self.filter(vendor=vendor).annotate(
+        # Correlated aggregates avoid multiplying earnings by the image join.
+        sales = OrderItem.objects.filter(product_id=OuterRef('pk'), order__status='delivered').order_by().values('product_id')
+        return self.filter(vendor=vendor).select_related('category', 'catalog_product').prefetch_related('images', 'catalog_product__images').annotate(
             image_count=Count("images", distinct=True),
             revenue=Coalesce(
-                Sum("orderitem__subtotal"),
+                Subquery(sales.annotate(total=Sum('subtotal')).values('total')[:1]),
                 Value(0),
                 output_field=DecimalField(max_digits=12, decimal_places=2),
             ),
-            sales_count=Coalesce(Sum("orderitem__quantity"), Value(0)),
+            sales_count=Coalesce(Subquery(sales.annotate(total=Sum('quantity')).values('total')[:1]), Value(0)),
         )

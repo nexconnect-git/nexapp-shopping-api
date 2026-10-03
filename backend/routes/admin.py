@@ -3,7 +3,11 @@ URL patterns for /api/admin/ — admin-only endpoints.
 All views enforce IsAdminRole permission internally.
 """
 from django.urls import path, include
+from vendors.views.payout_statement import AdminPayoutStatementView
+from vendors.views.finance_recipients import AdminFinanceRecipientsView, AdminVendorBankSummaryView, AdminPayoutEstimateView
+from backend.views.admin_console_views import AdminSupportAssigneesView, AdminAccountResetView, AdminConsoleIdentityView, AdminDispatchCommandView, AdminDispatchConsoleView, AdminFinanceSummaryView, AdminGlobalSearchView, AdminProfileContextView, AdminRuntimeReadinessView
 from rest_framework.routers import DefaultRouter
+from backend.views.scheduled_task_views import AdminScheduledTaskRetryView
 from backend.views import (
     AdminScheduledTaskListCreateView,
     AdminScheduledTaskCancelView,
@@ -115,6 +119,16 @@ admin_router.register(r'customers', AdminCustomerViewSet, basename='admin-custom
 admin_router.register(r'products', AdminProductViewSet, basename='admin-products')
 
 urlpatterns = [
+    path('scheduled-tasks/<str:job_id>/retry/', AdminScheduledTaskRetryView.as_view(), name='admin-job-retry'),
+    path('access/me/', AdminConsoleIdentityView.as_view(), name='admin-access-me'),
+    path('accounts/<uuid:pk>/password-reset/', AdminAccountResetView.as_view(), name='admin-account-reset'),
+    path('search/', AdminGlobalSearchView.as_view(), name='admin-global-search'),
+    path('profiles/<str:entity_type>/<uuid:pk>/context/', AdminProfileContextView.as_view(), name='admin-profile-context'),
+    path('finance/summary/', AdminFinanceSummaryView.as_view(), name='admin-finance-summary'),
+    path('dispatch/', AdminDispatchConsoleView.as_view(), name='admin-dispatch-console'),
+    path('dispatch/<uuid:pk>/commands/', AdminDispatchCommandView.as_view(), name='admin-dispatch-command'),
+    path('support-assignees/', AdminSupportAssigneesView.as_view(), name='admin-support-assignees'),
+    path('runtime-readiness/', AdminRuntimeReadinessView.as_view(), name='admin-runtime-readiness'),
     path('', include(admin_router.urls)),
     
     # Dashboard summary statistics
@@ -135,6 +149,12 @@ urlpatterns = [
 
     # Vendor payouts
     path('payouts/vendors/', AdminVendorPayoutListView.as_view(), name='admin-vendor-payouts'),
+    path('payouts/recipients/', AdminFinanceRecipientsView.as_view(), name='admin-finance-recipients'),
+    path('payouts/vendors/<uuid:pk>/estimate/', AdminPayoutEstimateView.as_view(), {'kind': 'vendor'}, name='admin-vendor-payout-estimate'),
+    path('payouts/delivery/<uuid:pk>/estimate/', AdminPayoutEstimateView.as_view(), {'kind': 'delivery'}, name='admin-delivery-payout-estimate'),
+    path('vendors/<uuid:pk>/bank/', AdminVendorBankSummaryView.as_view(), name='admin-vendor-bank-summary'),
+    path('payouts/vendors/<uuid:pk>/statement/', AdminPayoutStatementView.as_view(), {'kind': 'vendor'}, name='admin-vendor-payout-statement'),
+    path('payouts/delivery/<uuid:pk>/statement/', AdminPayoutStatementView.as_view(), {'kind': 'delivery'}, name='admin-delivery-payout-statement'),
     path('payouts/vendors/<uuid:pk>/', AdminVendorPayoutDetailView.as_view(), name='admin-vendor-payout-detail'),
     path('payouts/vendors/<uuid:pk>/schedule/', AdminVendorPayoutScheduleView.as_view(), name='admin-vendor-payout-schedule'),
     path('payouts/vendors/<uuid:pk>/send-payment/', AdminVendorPayoutSendPaymentView.as_view(), name='admin-vendor-payout-send-payment'),

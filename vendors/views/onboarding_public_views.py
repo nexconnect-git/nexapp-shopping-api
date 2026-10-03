@@ -2,7 +2,7 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.tokens import RefreshToken
+from accounts.helpers.token_helpers import generate_tokens_for_user, set_refresh_cookie
 
 from accounts.actions.admin_actions import CheckUserAvailabilityAction
 from accounts.serializers import UserProfileSerializer
@@ -18,16 +18,18 @@ class VendorRegistrationView(APIView):
         serializer.is_valid(raise_exception=True)
         vendor = serializer.save()
         SendVendorSelfRegistrationEmailsAction().execute(vendor)
-        refresh = RefreshToken.for_user(vendor.user)
-        return Response(
+        tokens = generate_tokens_for_user(vendor.user)
+        response = Response(
             {
                 'user': UserProfileSerializer(vendor.user).data,
                 'vendor': VendorSerializer(vendor).data,
                 'vendor_status': vendor.status,
-                'tokens': {'refresh': str(refresh), 'access': str(refresh.access_token)},
+                'tokens': {'access': tokens['access']},
             },
             status=status.HTTP_201_CREATED,
         )
+        set_refresh_cookie(response, tokens['refresh'], 'vendor')
+        return response
 
 
 class VendorIdentityAvailabilityView(APIView):

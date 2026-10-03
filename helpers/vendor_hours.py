@@ -3,9 +3,19 @@ from datetime import time
 from django.utils import timezone
 
 
-def get_vendor_availability(vendor, current_dt=None):
+def is_vendor_within_hours(vendor, current_dt=None):
     local_dt = timezone.localtime(current_dt or timezone.now())
     current_time = local_dt.time().replace(tzinfo=None)
+    opening_time = _coerce_time(getattr(vendor, "opening_time", None))
+    closing_time = _coerce_time(getattr(vendor, "closing_time", None))
+    if not opening_time or not closing_time or opening_time == closing_time:
+        return True
+    if opening_time < closing_time:
+        return opening_time <= current_time <= closing_time
+    return current_time >= opening_time or current_time <= closing_time
+
+
+def get_vendor_availability(vendor, current_dt=None):
 
     if not vendor.is_open:
         return False, "Currently closed"
@@ -21,15 +31,12 @@ def get_vendor_availability(vendor, current_dt=None):
     if opening_time == closing_time:
         return True, "Open now"
 
-    if opening_time < closing_time:
-        is_within_hours = opening_time <= current_time <= closing_time
-    else:
-        is_within_hours = current_time >= opening_time or current_time <= closing_time
-
-    if is_within_hours:
+    if is_vendor_within_hours(vendor, current_dt=current_dt):
         return True, f"Open now until {closing_time.strftime('%H:%M')}"
 
-    return False, f"Closed right now. Open {opening_time.strftime('%H:%M')} - {closing_time.strftime('%H:%M')}"
+    current_time = timezone.localtime(current_dt or timezone.now()).time().replace(tzinfo=None)
+    next_day = "tomorrow" if opening_time < closing_time and current_time > closing_time else "today"
+    return False, f"Opens {next_day} at {opening_time.strftime('%H:%M')} ({timezone.get_current_timezone_name()}). Scheduled until {closing_time.strftime('%H:%M')}."
 
 
 def is_vendor_open_now(vendor, current_dt=None):

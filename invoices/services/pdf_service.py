@@ -9,6 +9,7 @@ from xhtml2pdf import pisa
 
 _TEMPLATE_MAP = {
     'vendor_settlement': 'invoices/vendor_settlement.html',
+    'delivery_payout': 'invoices/delivery_payout.html',
 }
 _DEFAULT_TEMPLATE = 'invoices/customer_invoice.html'
 

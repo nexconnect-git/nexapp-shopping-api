@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 
 from accounts.actions.profile_actions import ChangePasswordAction
+from accounts.helpers.token_helpers import generate_tokens_for_user, set_refresh_cookie
 from accounts.serializers.user_serializers import (
     ChangePasswordSerializer,
     UserProfileSerializer,
@@ -65,12 +66,15 @@ class ChangePasswordView(APIView):
         serializer.is_valid(raise_exception=True)
 
         try:
-            ChangePasswordAction(
+            user = ChangePasswordAction(
                 user=request.user,
                 current_password=serializer.validated_data['current_password'],
                 new_password=serializer.validated_data['new_password'],
             ).execute()
-            return Response({'detail': 'Password updated successfully.'})
+            tokens = generate_tokens_for_user(user)
+            response = Response({'detail': 'Password updated successfully.', 'user': UserProfileSerializer(user).data, 'tokens': {'access': tokens['access']}})
+            set_refresh_cookie(response, tokens['refresh'], user.role)
+            return response
         except ValueError as exc:
             return Response(
                 {'current_password': str(exc)},

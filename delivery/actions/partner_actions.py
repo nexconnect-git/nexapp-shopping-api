@@ -1,6 +1,5 @@
 from typing import Any
 from django.db import transaction
-from django.utils.crypto import get_random_string
 from rest_framework.exceptions import PermissionDenied
 
 from delivery.data.partner_repo import DeliveryPartnerRepository
@@ -29,11 +28,9 @@ class UpdateLocationAction:
         elif partner.status == "on_delivery" and not active_order_qs.exists():
             raise PermissionDenied("No active assigned order for location tracking.")
 
-        partner.current_latitude = latitude
-        partner.current_longitude = longitude
         if partner.status == "offline":
-            partner.status = "available"
-        partner.save(update_fields=["current_latitude", "current_longitude", "status", "updated_at"])
+            DeliveryPartnerRepository.update(partner, status="available")
+        DeliveryPartnerRepository.save_location(partner, latitude, longitude)
 
         if had_no_location and partner.status == "available":
             for assignment in DeliveryAssignment.objects.filter(status__in=["searching", "notified"]):
@@ -79,25 +76,3 @@ class AdminTogglePartnerApprovalAction:
             
         partner.save(update_fields=["is_approved", "status", "updated_at"])
         return partner
-
-
-class AdminGeneratePartnerTemporaryPasswordAction:
-    @staticmethod
-    @transaction.atomic
-    def execute(partner_id: str) -> tuple[DeliveryPartner, str]:
-        try:
-            partner = DeliveryPartnerRepository.get_by_id(
-                partner_id,
-                select_related=["user"],
-            )
-        except DeliveryPartner.DoesNotExist as exc:
-            raise ValueError("Delivery partner not found.") from exc
-
-        temporary_password = get_random_string(12)
-        partner.user.set_password(temporary_password)
-        partner.user.force_password_change = True
-        partner.user.temp_password = temporary_password
-        partner.user.save(
-            update_fields=["password", "force_password_change", "temp_password"],
-        )
-        return partner, temporary_password

@@ -18,6 +18,20 @@ class AdminPermissionGrant(models.Model):
         ('audit.view', 'View audit logs'),
         ('notifications.manage', 'Manage notifications'),
         ('automation.manage', 'Manage scheduled tasks'),
+        ('overview.view', 'View overview'),
+        ('orders.view', 'View orders'),
+        ('dispatch.view', 'View dispatch'),
+        ('vendors.view', 'View vendors'),
+        ('customers.view', 'View customers'),
+        ('catalog.view', 'View catalog'),
+        ('support.view', 'View support'),
+        ('finance.view', 'View finance'),
+        ('growth.view', 'View promotions'),
+        ('growth.manage', 'Manage promotions'),
+        ('notifications.view', 'View notifications'),
+        ('automation.view', 'View jobs'),
+        ('settings.view', 'View settings'),
+        ('users.reset_password', 'Initiate password reset'),
     )
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

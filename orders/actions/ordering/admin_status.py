@@ -1,16 +1,10 @@
-import logging
-
 from django.db import transaction
 
-from accounts.actions.loyalty_actions import EarnLoyaltyPointsAction
+from orders.actions import OrderCancellationEffectsAction, SettleDeliveredOrderAction
+from orders.data.order_repo import OrderRepository
 from backend.events import order_status_updated
 from orders.actions.base import BaseAction
-from orders.actions.inventory_reservations import ReservationInventoryAction
-from orders.actions.refund_actions import IssueRazorpayRefundAction
-from orders.models import Order, OrderTracking
-
-
-logger = logging.getLogger(__name__)
+from orders.models import Order
 
 
 class AdminUpdateOrderStatusAction(BaseAction):
@@ -19,24 +13,27 @@ class AdminUpdateOrderStatusAction(BaseAction):
     @transaction.atomic
     def execute(self, order_id, new_status, admin_user) -> Order:
         try:
-            order = Order.objects.get(pk=order_id)
+            order = OrderRepository.get_locked(order_id)
         except Order.DoesNotExist:
             raise ValueError('Order not found.')
 
         if new_status not in self.valid_statuses:
             raise ValueError('Invalid status.')
-        if new_status == 'cancelled' and order.status == 'delivered':
-            raise ValueError('Delivered orders cannot be cancelled.')
+        if new_status == order.status:
+            return order
+        if order.status in ('delivered', 'cancelled'):
+            raise ValueError('Completed or cancelled orders cannot change status.')
+        if new_status != 'cancelled' and self.valid_statuses.index(new_status) < self.valid_statuses.index(order.status):
+            raise ValueError('Orders cannot move backwards through delivery statuses.')
 
         old_status = order.status
         order.status = new_status
         order.save(update_fields=['status', 'updated_at'])
 
         if new_status == 'cancelled' and old_status != 'cancelled':
-            ReservationInventoryAction().release_order(order, reason="cancelled")
-            self._refund_razorpay(order)
+            OrderCancellationEffectsAction().execute(order)
 
-        OrderTracking.objects.create(
+        OrderRepository.add_tracking(
             order=order,
             status=new_status,
             description=f'Status updated by admin to {new_status}.',
@@ -44,57 +41,6 @@ class AdminUpdateOrderStatusAction(BaseAction):
         order_status_updated.send(sender=Order, order=order, new_status=new_status, old_status=old_status)
 
         if new_status == 'delivered' and old_status != 'delivered':
-            self._settle_delivered_order(order)
+            SettleDeliveredOrderAction().execute(order)
 
         return order
-
-    def _refund_razorpay(self, order):
-        if order.payment_method != 'razorpay' or not order.is_payment_verified or order.razorpay_refund_id:
-            return
-        try:
-            IssueRazorpayRefundAction().execute(order)
-        except Exception as exc:
-            logger.warning('Admin cancel refund failed for order %s: %s', order.order_number, exc)
-
-    def _settle_delivered_order(self, order):
-        with transaction.atomic():
-            self._credit_vendor(order)
-            self._credit_delivery_partner(order)
-            self._award_loyalty(order)
-
-    def _credit_vendor(self, order):
-        from vendors.actions.wallet_actions import VendorWalletAction
-
-        vendor_earnings = order.subtotal - order.coupon_discount
-        VendorWalletAction.credit_vendor(
-            vendor_id=str(order.vendor.id),
-            amount=vendor_earnings,
-            source='order_earning',
-            reference_id=str(order.id),
-            description=f'Earnings from Order #{order.order_number}',
-        )
-
-    def _credit_delivery_partner(self, order):
-        if not order.delivery_partner:
-            return
-        from delivery.models import DeliveryPartner
-
-        try:
-            partner_profile = DeliveryPartner.objects.get(user=order.delivery_partner)
-            partner_profile.wallet_balance += order.delivery_fee
-            partner_profile.save(update_fields=['wallet_balance', 'updated_at'])
-        except DeliveryPartner.DoesNotExist:
-            pass
-
-    def _award_loyalty(self, order):
-        if order.total <= 0:
-            return
-        try:
-            EarnLoyaltyPointsAction.execute(
-                user=order.customer,
-                order_total=order.total,
-                reference_id=str(order.pk),
-                description=f'Earned points for order {order.order_number}',
-            )
-        except Exception as exc:
-            logger.warning('Loyalty earn failed for order %s: %s', order.order_number, exc)

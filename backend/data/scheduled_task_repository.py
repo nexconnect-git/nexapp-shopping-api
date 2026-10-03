@@ -1,10 +1,12 @@
 import django_rq
+from rest_framework.exceptions import NotFound, ValidationError
 
 try:
     from rq.job import Job
-    from rq.registry import DeferredJobRegistry, FailedJobRegistry, FinishedJobRegistry, StartedJobRegistry
+    from rq.registry import CanceledJobRegistry, DeferredJobRegistry, FailedJobRegistry, FinishedJobRegistry, StartedJobRegistry
 except (ImportError, ModuleNotFoundError):
     Job = None
+    CanceledJobRegistry = None
     DeferredJobRegistry = None
     FailedJobRegistry = None
     FinishedJobRegistry = None
@@ -18,7 +20,10 @@ except ModuleNotFoundError:
 
 class ScheduledTaskRepository:
     def get_queue(self):
-        return django_rq.get_queue('default')
+        queue = django_rq.get_queue('default')
+        if queue.connection.ping() is not True:
+            raise RuntimeError('Redis queue is unavailable.')
+        return queue
 
     def get_scheduler(self):
         if Scheduler is None:
@@ -39,13 +44,14 @@ class ScheduledTaskRepository:
         job_ids.update(FinishedJobRegistry(queue=queue).get_job_ids())
         job_ids.update(FailedJobRegistry(queue=queue).get_job_ids())
         job_ids.update(DeferredJobRegistry(queue=queue).get_job_ids())
-        return Job.fetch_many(list(job_ids), connection=queue.connection)
+        job_ids.update(CanceledJobRegistry(queue=queue).get_job_ids())
+        return Job.fetch_many(sorted(job_ids)[:500], connection=queue.connection)
 
     def enqueue(self, func, kwargs):
-        return self.get_queue().enqueue(func, **kwargs)
+        return self.get_queue().enqueue(func, kwargs=kwargs, result_ttl=86400, failure_ttl=604800)
 
     def enqueue_at(self, scheduled_time, func, kwargs):
-        return self.get_scheduler().enqueue_at(scheduled_time, func, **kwargs)
+        return self.get_scheduler().enqueue_at(scheduled_time, func, kwargs=kwargs, result_ttl=86400, failure_ttl=604800)
 
     def schedule(self, scheduled_time, func, kwargs, repeat):
         return self.get_scheduler().schedule(
@@ -53,6 +59,8 @@ class ScheduledTaskRepository:
             func=func,
             kwargs=kwargs,
             interval=int(repeat),
+            result_ttl=max(86400, int(repeat) + 3600),
+            failure_ttl=604800,
         )
 
     def cancel(self, job_id):
@@ -60,12 +68,26 @@ class ScheduledTaskRepository:
             raise RuntimeError('rq is not installed. Install it to cancel queue jobs.')
 
         queue = self.get_queue()
-        try:
-            job = Job.fetch(job_id, connection=queue.connection)
-            job.delete()
-        except Exception:
-            pass
-
+        job = self.job(job_id)
+        if str(getattr(job.get_status(), 'value', job.get_status())) not in ('queued', 'scheduled', 'deferred'):
+            raise ValidationError('Only queued, scheduled or deferred jobs can be cancelled.')
         scheduler = self.get_scheduler()
         if job_id in scheduler:
             scheduler.cancel(job_id)
+        job.cancel()
+
+    def job(self, job_id):
+        queue = self.get_queue()
+        if Job is None:
+            raise RuntimeError('RQ is unavailable.')
+        jobs = Job.fetch_many([job_id], connection=queue.connection)
+        if not jobs or jobs[0] is None:
+            raise NotFound('Job not found.')
+        return jobs[0]
+
+    def retry(self, job_id):
+        queue = self.get_queue()
+        job = self.job(job_id)
+        if str(getattr(job.get_status(), 'value', job.get_status())) != 'failed':
+            raise ValidationError('Only failed jobs can be retried.')
+        return FailedJobRegistry(queue=queue).requeue(job)

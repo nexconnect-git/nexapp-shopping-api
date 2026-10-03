@@ -118,7 +118,7 @@ def notify_order_cancelled(sender, order, **kwargs):
     _create_and_push(
         user=order.vendor.user,
         title="Order Cancelled",
-        message=f"Order #{order.order_number} has been cancelled by the customer.",
+        message=f"Order #{order.order_number} has been cancelled.",
         notification_type="order",
         data={"order_id": str(order.id), "order_number": order.order_number},
     )

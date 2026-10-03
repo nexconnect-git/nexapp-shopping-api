@@ -1,17 +1,21 @@
 from rest_framework.permissions import BasePermission
 
-from accounts.models import AdminPermissionGrant
+from accounts.admin_access import allows, required_permission
 
 
 class IsAdminRole(BasePermission):
     """Allows access only to users with role='admin'."""
 
     def has_permission(self, request, view):
-        return bool(
+        authenticated = bool(
             request.user
             and request.user.is_authenticated
             and request.user.role == 'admin'
         )
+        if not authenticated:
+            return False
+        permission = required_permission(view, request.method)
+        return permission is None or allows(request.user, permission)
 
 
 class IsSuperUser(BasePermission):
@@ -22,6 +26,8 @@ class IsSuperUser(BasePermission):
             request.user
             and request.user.is_authenticated
             and request.user.is_superuser
+            and request.user.is_active
+            and request.user.role == 'admin'
         )
 
 
@@ -41,10 +47,8 @@ class HasAdminPermission(BasePermission):
         if not required_permission:
             return True
 
-        return AdminPermissionGrant.objects.filter(
-            user=user,
-            permission=required_permission,
-        ).exists()
+        permission = required_permission.replace('.manage', '.view') if request.method in ('GET', 'HEAD', 'OPTIONS') else required_permission
+        return allows(user, permission)
 
 
 class IsVendor(BasePermission):
@@ -68,7 +72,10 @@ class IsApprovedVendor(BasePermission):
             return False
         if not hasattr(request.user, 'vendor_profile') or request.user.vendor_profile is None:
             return False
-        return request.user.vendor_profile.status == 'approved'
+        if request.user.force_password_change:
+            self.message = 'Change your password before using vendor operations.'
+            return False
+        return request.user.role == 'vendor' and request.user.vendor_profile.status == 'approved'
 
 
 class IsDeliveryPartner(BasePermission):

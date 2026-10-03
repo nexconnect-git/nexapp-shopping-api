@@ -1,9 +1,18 @@
 from django.db.models import QuerySet
+from django.utils import timezone
 from delivery.models import DeliveryPartner
+from vendors.data.base import BaseRepository
 
 
-class DeliveryPartnerRepository:
+class DeliveryPartnerRepository(BaseRepository):
     """Repository for DeliveryPartner database operations."""
+
+    def __init__(self):
+        super().__init__(DeliveryPartner)
+
+    @staticmethod
+    def get_locked_by_user(user):
+        return DeliveryPartner.objects.select_for_update().get(user=user)
 
     @staticmethod
     def get_by_id(pk: str, prefetch: list = None, select_related: list = None) -> DeliveryPartner:
@@ -49,6 +58,20 @@ class DeliveryPartnerRepository:
     def get_base_queryset():
         """Return the base queryset for DeliveryPartner without any filters."""
         return DeliveryPartner.objects.all()
+
+    @staticmethod
+    def tracking_snapshot(order_id):
+        return DeliveryPartner.objects.filter(
+            user__deliveries__id=order_id,
+            user__deliveries__status__in=['ready', 'picked_up', 'on_the_way'],
+        ).first()
+
+    @staticmethod
+    def save_location(instance, latitude, longitude):
+        return DeliveryPartnerRepository.update(
+            instance, current_latitude=latitude, current_longitude=longitude,
+            location_updated_at=timezone.now(),
+        )
 
     @staticmethod
     def update(instance: DeliveryPartner, **kwargs) -> DeliveryPartner:

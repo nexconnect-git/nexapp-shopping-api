@@ -1,4 +1,7 @@
 from django.utils import timezone
+from django.db import transaction
+from rest_framework.exceptions import ValidationError
+from products.data.product_repository import ProductRepository
 from django.utils.text import slugify
 
 from products.models import Product
@@ -38,6 +41,7 @@ class ProductApprovalPolicy:
         "is_age_restricted",
         "is_returnable",
         "images",
+        "inheritance_mode",
     }
 
     VENDOR_MANAGED_FIELDS = OPERATIONAL_FIELDS | CRUCIAL_FIELDS | {
@@ -85,13 +89,17 @@ class ProductApprovalPolicy:
 
 
 class UpdateVendorProductAction:
+    @transaction.atomic
     def execute(self, product, update_data):
+        product = ProductRepository.locked_owned(product)
         sanitized = {
             field: value
             for field, value in update_data.items()
             if field in ProductApprovalPolicy.VENDOR_MANAGED_FIELDS
         }
         changed_crucial_fields = ProductApprovalPolicy.crucial_changes(product, sanitized)
+        if changed_crucial_fields and product.approval_status == Product.APPROVAL_STATUS_PENDING:
+            raise ValidationError("Pending product details are locked until review completes.")
         update_fields = []
 
         for field, value in sanitized.items():
@@ -114,15 +122,14 @@ class UpdateVendorProductAction:
 
         if update_fields:
             update_fields.append("updated_at")
-            product.save(update_fields=sorted(set(update_fields)))
+            ProductRepository.update(product, update_fields=sorted(set(update_fields)))
         return product
 
     def _unique_product_slug(self, name, instance):
         base = slugify(name) or "product"
         candidate = base
         n = 1
-        qs = Product.objects.exclude(pk=instance.pk)
-        while qs.filter(slug=candidate).exists():
+        while not ProductRepository.slug_available(candidate, instance.pk):
             candidate = f"{base}-{n}"
             n += 1
         return candidate

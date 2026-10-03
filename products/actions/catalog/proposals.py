@@ -3,7 +3,7 @@ from django.utils import timezone
 
 from notifications.models import Notification
 from products.actions.catalog.slug import CatalogSlugMixin
-from products.data.catalog_repository import VendorCatalogGrantRepository
+from products.data.catalog_repository import VendorCatalogGrantRepository, CatalogProposalRepository
 from products.models import CatalogProduct, CatalogProposal, CatalogProposalItem
 
 
@@ -12,19 +12,7 @@ class CreateCatalogProposalAction:
         if not items:
             raise ValueError('At least one proposed item is required.')
         with transaction.atomic():
-            proposal = CatalogProposal.objects.create(vendor=vendor)
-            for item in items:
-                CatalogProposalItem.objects.create(
-                    proposal=proposal,
-                    name=item['name'],
-                    category=item.get('category'),
-                    description=item.get('description', ''),
-                    brand=item.get('brand', ''),
-                    unit=item.get('unit', 'piece'),
-                    barcode=item.get('barcode', ''),
-                    sku_hint=item.get('sku_hint', ''),
-                )
-            return proposal
+            return CatalogProposalRepository().create_with_items(vendor, items)
 
 
 class ProposalStatusMixin:

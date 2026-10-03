@@ -212,7 +212,7 @@ class VerifyRazorpayPaymentView(APIView):
 
         try:
             updated_order = VerifyRazorpayPaymentAction(order, payment_id, signature).execute()
-            return Response(OrderSerializer(updated_order).data)
+            return Response(OrderSerializer(updated_order, context={'request': request}).data)
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 

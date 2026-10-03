@@ -28,6 +28,7 @@ class DeliveryPartner(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='offline')
     current_latitude = models.DecimalField(max_digits=11, decimal_places=8, null=True, blank=True)
     current_longitude = models.DecimalField(max_digits=11, decimal_places=8, null=True, blank=True)
+    location_updated_at = models.DateTimeField(null=True, blank=True)
     average_rating = models.DecimalField(max_digits=3, decimal_places=2, default=0)
     total_deliveries = models.IntegerField(default=0)
     total_earnings = models.DecimalField(max_digits=10, decimal_places=2, default=0)

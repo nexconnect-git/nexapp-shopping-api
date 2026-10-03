@@ -1,6 +1,6 @@
 from django.db.models import Q
 
-from rest_framework import status
+from rest_framework import serializers, status
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -16,6 +16,8 @@ from products.actions import (
     RejectCatalogProposalItemAction,
     ReviewVendorProductAction,
     SubmitInheritedProductBatchAction,
+    UpdateInheritedProductDraftAction,
+    UpdateVendorProductAction,
 )
 from products.data.catalog_repository import CatalogProductRepository, CatalogProposalRepository, VendorCatalogGrantRepository
 from products.models import CatalogProduct, CatalogProductImage, CatalogProposal, CatalogProposalItem, Product, VendorCatalogGrant
@@ -33,6 +35,7 @@ from products.serializers.catalog_serializers import (
     VendorCatalogGrantSerializer,
 )
 from vendors.models import Vendor
+from products.data.vendor_inheritance_repository import VendorInheritanceRepository
 from helpers.validators import validate_image_upload
 
 
@@ -163,16 +166,10 @@ class VendorAvailableCatalogProductsView(APIView):
     permission_classes = [IsAuthenticated, IsApprovedVendor]
 
     def get(self, request):
-        qs = CatalogProductRepository().available_for_vendor(request.user.vendor_profile)
-        search = request.query_params.get("search")
-        if search:
-            qs = qs.filter(
-                Q(name__icontains=search)
-                | Q(brand__icontains=search)
-                | Q(barcode__icontains=search)
-                | Q(search_keywords__icontains=search)
-                | Q(category__name__icontains=search)
-            )
+        catalog_id = request.query_params.get("catalog_id")
+        if catalog_id:
+            catalog_id = serializers.UUIDField().run_validation(catalog_id)
+        qs = CatalogProductRepository().available_for_vendor(request.user.vendor_profile, search=request.query_params.get("search"), catalog_id=catalog_id)
         paginator = CatalogPagination()
         page = paginator.paginate_queryset(qs, request)
         return paginator.get_paginated_response(CatalogProductSerializer(page, many=True, context={"request": request}).data)
@@ -183,7 +180,7 @@ class VendorCatalogProductDetailView(APIView):
 
     def get(self, request, pk):
         product = CatalogProductRepository().get_by_id(pk, select_related=["category"], prefetch=["images"])
-        if not product or not product.is_active:
+        if not product or not product.is_active or not VendorCatalogGrantRepository().has_grant(request.user.vendor_profile, product):
             return Response({"error": "Catalog product not found."}, status=status.HTTP_404_NOT_FOUND)
         return Response(CatalogProductSerializer(product, context={"request": request}).data)
 
@@ -217,6 +214,7 @@ class VendorInheritedProductDraftBatchCreateView(APIView):
             batch_id, created = CreateInheritedProductDraftBatchAction().execute(
                 vendor=request.user.vendor_profile,
                 catalog_product_ids=serializer.validated_data["catalog_product_ids"],
+                batch_id=serializer.validated_data.get("batch_id"),
             )
         except ValueError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -234,31 +232,23 @@ class VendorInheritedProductListView(APIView):
 
     def get(self, request):
         status_filter = request.query_params.get("approval_status")
-        qs = Product.objects.filter(vendor=request.user.vendor_profile, catalog_product__isnull=False).select_related(
-            "catalog_product", "category", "reviewed_by"
-        )
+        qs = VendorInheritanceRepository().owned(request.user.vendor_profile)
         if status_filter:
             qs = qs.filter(approval_status=status_filter)
-        return Response(ProductSerializer(qs.order_by("-updated_at"), many=True, context={"request": request}).data)
+        if "page" in request.query_params:
+            paginator = CatalogPagination()
+            page = paginator.paginate_queryset(qs, request)
+            return paginator.get_paginated_response(ProductSerializer(page, many=True, context={"request": request}).data)
+        return Response(ProductSerializer(qs, many=True, context={"request": request}).data)
 
 
 class VendorInheritedProductDetailView(APIView):
     permission_classes = [IsAuthenticated, IsApprovedVendor]
 
     def patch(self, request, pk):
-        try:
-            product = Product.objects.get(pk=pk, vendor=request.user.vendor_profile, catalog_product__isnull=False)
-        except Product.DoesNotExist:
-            return Response({"error": "Variant not found."}, status=status.HTTP_404_NOT_FOUND)
         serializer = CreateVendorProductFromCatalogSerializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data
-        data.pop("catalog_product_id", None)
-        for field, value in data.items():
-            setattr(product, field, value)
-        product.approval_status = Product.APPROVAL_STATUS_DRAFT
-        product.rejection_reason = ""
-        product.save()
+        product = UpdateInheritedProductDraftAction().execute(request.user.vendor_profile, pk, serializer.validated_data)
         return Response(ProductSerializer(product, context={"request": request}).data)
 
 
@@ -267,7 +257,7 @@ class VendorInheritedProductDuplicateView(APIView):
 
     def post(self, request, pk):
         try:
-            product = Product.objects.get(pk=pk, vendor=request.user.vendor_profile, catalog_product__isnull=False)
+            product = VendorInheritanceRepository().owned(request.user.vendor_profile).get(pk=pk)
         except Product.DoesNotExist:
             return Response({"error": "Variant not found."}, status=status.HTTP_404_NOT_FOUND)
         try:
@@ -287,6 +277,7 @@ class VendorInheritedProductSubmitView(APIView):
             variants = SubmitInheritedProductBatchAction().execute(
                 request.user.vendor_profile,
                 serializer.validated_data["product_ids"],
+                approval_note=serializer.validated_data.get("approval_note", ""),
             )
         except ValueError as exc:
             payload = exc.args[0] if exc.args else "Validation failed."
@@ -301,11 +292,10 @@ class VendorInheritedProductImagePolicyView(APIView):
         serializer = InheritedProductImagePolicySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
-            product = Product.objects.get(pk=pk, vendor=request.user.vendor_profile, catalog_product__isnull=False)
+            product = VendorInheritanceRepository().owned(request.user.vendor_profile).get(pk=pk)
         except Product.DoesNotExist:
             return Response({"error": "Variant not found."}, status=status.HTTP_404_NOT_FOUND)
-        product.inheritance_mode = serializer.validated_data["inheritance_mode"]
-        product.save(update_fields=["inheritance_mode", "updated_at"])
+        product = UpdateVendorProductAction().execute(product, serializer.validated_data)
         return Response(ProductSerializer(product, context={"request": request}).data)
 
 
@@ -313,7 +303,7 @@ class VendorCatalogProposalListCreateView(APIView):
     permission_classes = [IsAuthenticated, IsApprovedVendor]
 
     def get(self, request):
-        qs = CatalogProposalRepository().list_for_vendor(request.user.vendor_profile)
+        qs = CatalogProposalRepository().list_for_vendor(request.user.vendor_profile, request.query_params)
         paginator = CatalogPagination()
         page = paginator.paginate_queryset(qs, request)
         return paginator.get_paginated_response(CatalogProposalSerializer(page, many=True, context={"request": request}).data)
@@ -328,7 +318,7 @@ class VendorCatalogProposalListCreateView(APIView):
             )
         except ValueError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        proposal = CatalogProposal.objects.prefetch_related("items__category").get(pk=proposal.pk)
+        proposal = CatalogProposalRepository().get_by_id(proposal.pk, prefetch=["items__category", "items__created_catalog_product"])
         return Response(CatalogProposalSerializer(proposal, context={"request": request}).data, status=status.HTTP_201_CREATED)
 
 
@@ -395,7 +385,11 @@ class AdminPendingVendorProductListView(APIView):
             catalog_product__isnull=False,
             approval_status=Product.APPROVAL_STATUS_PENDING,
         ).select_related("vendor", "catalog_product", "category")
-        return Response(ProductSerializer(qs.order_by("-updated_at"), many=True, context={"request": request}).data)
+        if "page" in request.query_params:
+            paginator = CatalogPagination()
+            page = paginator.paginate_queryset(qs, request)
+            return paginator.get_paginated_response(ProductSerializer(page, many=True, context={"request": request}).data)
+        return Response(ProductSerializer(qs, many=True, context={"request": request}).data)
 
 
 class AdminApproveVendorProductView(APIView):

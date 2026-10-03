@@ -1,8 +1,10 @@
 import json
+import math
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from orders.models import Order
-from delivery.models import DeliveryPartner
+from accounts.admin_access import allows, current_session_user
+from delivery.data.partner_repo import DeliveryPartnerRepository
 from helpers.geo_helpers import calculate_eta_minutes
 
 class DeliveryTrackingConsumer(AsyncWebsocketConsumer):
@@ -25,6 +27,9 @@ class DeliveryTrackingConsumer(AsyncWebsocketConsumer):
         )
 
         await self.accept(subprotocol=self.scope.get('ws_subprotocol'))
+        snapshot = await self.latest_location()
+        if snapshot:
+            await self.send(text_data=json.dumps(snapshot))
 
     async def disconnect(self, close_code):
         if hasattr(self, 'room_group_name'):
@@ -34,7 +39,12 @@ class DeliveryTrackingConsumer(AsyncWebsocketConsumer):
             )
 
     async def receive(self, text_data):
-        data = json.loads(text_data)
+        try:
+            data = json.loads(text_data)
+        except (TypeError, ValueError):
+            return
+        if not isinstance(data, dict):
+            return
 
         # Expecting { 'action': 'update_location', 'lat': 12.x, 'lng': 77.x }
         if data.get('action') == 'update_location':
@@ -43,7 +53,7 @@ class DeliveryTrackingConsumer(AsyncWebsocketConsumer):
                 return
 
             # Persist partner coordinates and get updated ETA
-            partner_id, lat, lng, eta_minutes = await self.update_partner_location_and_eta(
+            partner_id, lat, lng, eta_minutes, timestamp = await self.update_partner_location_and_eta(
                 self.order_id, self.scope['user'], data.get('lat'), data.get('lng')
             )
             if partner_id is None or lat is None or lng is None:
@@ -57,6 +67,7 @@ class DeliveryTrackingConsumer(AsyncWebsocketConsumer):
                     'lat': lat,
                     'lng': lng,
                     'partner_id': partner_id,
+                    'timestamp': timestamp,
                 }
             )
 
@@ -68,14 +79,32 @@ class DeliveryTrackingConsumer(AsyncWebsocketConsumer):
                 )
 
     async def location_update(self, event):
+        if not await self.check_tracking_access(self.order_id, self.scope['user']):
+            await self.close(code=4403)
+            return
         await self.send(text_data=json.dumps({
             'type': 'location_update',
             'lat': event['lat'],
             'lng': event['lng'],
             'partner_id': event.get('partner_id'),
+            'timestamp': event.get('timestamp'),
         }))
 
+    @database_sync_to_async
+    def latest_location(self):
+        partner = DeliveryPartnerRepository.tracking_snapshot(self.order_id)
+        if not partner or partner.current_latitude is None or partner.current_longitude is None:
+            return None
+        return {
+            'type': 'location_update', 'lat': float(partner.current_latitude),
+            'lng': float(partner.current_longitude), 'partner_id': str(partner.user_id),
+            'timestamp': partner.location_updated_at.isoformat() if partner.location_updated_at else None,
+        }
+
     async def eta_update(self, event):
+        if not await self.check_tracking_access(self.order_id, self.scope['user']):
+            await self.close(code=4403)
+            return
         await self.send(text_data=json.dumps({
             'type': 'eta_update',
             'eta_minutes': event['eta_minutes'],
@@ -85,37 +114,41 @@ class DeliveryTrackingConsumer(AsyncWebsocketConsumer):
     def update_partner_location_and_eta(self, order_id, user, lat, lng):
         """Persist partner GPS coords and return partner id + ETA."""
         if lat is None or lng is None:
-            return None, None, None, None
+            return None, None, None, None, None
 
         try:
             lat = float(lat)
             lng = float(lng)
         except (TypeError, ValueError):
-            return None, None, None, None
+            return None, None, None, None, None
+
+        if not math.isfinite(lat) or not math.isfinite(lng) or abs(lat)>90 or abs(lng)>180:
+            return None, None, None, None, None
 
         partner = None
         try:
             partner = user.delivery_profile
-            DeliveryPartner.objects.filter(pk=partner.pk).update(
-                current_latitude=lat, current_longitude=lng
-            )
+            DeliveryPartnerRepository.save_location(partner, lat, lng)
             order = Order.objects.select_related('vendor').get(pk=order_id)
             if (
-                order.vendor.latitude and order.vendor.longitude
-                and order.delivery_latitude and order.delivery_longitude
+                all(value is not None for value in (order.vendor.latitude, order.vendor.longitude,
+                    order.delivery_latitude, order.delivery_longitude))
             ):
                 eta_minutes = calculate_eta_minutes(
                     lat, lng,
                     float(order.vendor.latitude), float(order.vendor.longitude),
                     float(order.delivery_latitude), float(order.delivery_longitude),
                 )
-                return str(partner.user_id), lat, lng, eta_minutes
+                return str(partner.user_id), lat, lng, eta_minutes, partner.location_updated_at.isoformat()
         except Exception:
             pass
-        return (str(partner.user_id), lat, lng, None) if partner else (None, None, None, None)
+        return (str(partner.user_id), lat, lng, None, partner.location_updated_at.isoformat()) if partner else (None, None, None, None, None)
 
     @database_sync_to_async
     def can_publish_location(self, order_id, user):
+        user=current_session_user(user)
+        if not user:
+            return False
         try:
             order = Order.objects.select_related('assignment__accepted_partner__user').get(id=order_id)
             accepted_partner = getattr(order.assignment, 'accepted_partner', None)
@@ -127,10 +160,13 @@ class DeliveryTrackingConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def check_tracking_access(self, order_id, user):
+        user=current_session_user(user)
+        if not user:
+            return False
         try:
             order = Order.objects.get(id=order_id)
             # Admin can track any, Customer can track theirs, Vendor can track their store's, Partner can track what they are delivering
-            if user.role == 'admin':
+            if (allows(user, 'orders.view') or allows(user, 'dispatch.view')):
                 return True
             if order.customer == user:
                 return True

@@ -7,6 +7,8 @@ from accounts.permissions import IsApprovedVendor
 from support.actions import CreateTicketAction
 from support.data import SupportTicketRepository
 from support.serializers import SupportTicketSerializer
+from vendors.data.feedback_repository import VendorFeedbackRepository
+from vendors.helpers.public_vendor_helpers import StandardPagination
 
 
 class VendorTicketListCreateView(APIView):
@@ -15,8 +17,10 @@ class VendorTicketListCreateView(APIView):
     permission_classes = [IsAuthenticated, IsApprovedVendor]
 
     def get(self, request):
-        tickets = SupportTicketRepository.get_for_vendor(request.user.vendor_profile)
-        return Response(SupportTicketSerializer(tickets, many=True).data)
+        tickets = VendorFeedbackRepository().tickets(request.user.vendor_profile, request.query_params)
+        paginator = StandardPagination()
+        page = paginator.paginate_queryset(tickets, request)
+        return paginator.get_paginated_response(SupportTicketSerializer(page, many=True).data)
 
     def post(self, request):
         serializer = SupportTicketSerializer(data=request.data)

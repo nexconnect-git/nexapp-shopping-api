@@ -14,6 +14,7 @@ from vendors.serializers.admin import AdminVendorSerializer, VendorFullOnboardSe
 from vendors.serializers.onboarding import DocumentVerifySerializer, VendorDocumentSerializer
 from vendors.serializers.public import VendorRegistrationSerializer
 from vendors.data import VendorRepository
+from vendors.actions import UpdateAdminVendorProfileAction
 from vendors.models import VendorDocument
 
 class AdminVendorOnboardView(APIView):
@@ -25,10 +26,7 @@ class AdminVendorOnboardView(APIView):
         serializer.is_valid(raise_exception=True)
         vendor = serializer.save()
         
-        # We attach the auto-generated password if one was produced
         response_data = AdminVendorSerializer(vendor, context={'request': request}).data
-        if hasattr(vendor, 'auto_generated_password'):
-            response_data['temporary_password'] = vendor.auto_generated_password
         SendVendorWelcomeEmailAction().execute(vendor)
             
         return Response(response_data, status=status.HTTP_201_CREATED)
@@ -46,7 +44,7 @@ class AdminVendorListView(APIView):
         paginator.page_size = 20
         page = paginator.paginate_queryset(qs, request)
         return paginator.get_paginated_response(
-            AdminVendorSerializer(page, many=True, context={'request': request}).data
+            AdminVendorSerializer(page, many=True, context={'request': request, 'include_metadata': False}).data
         )
 
     def post(self, request):
@@ -69,14 +67,7 @@ class AdminVendorDetailView(APIView):
         return Response(AdminVendorSerializer(vendor, context={'request': request}).data)
 
     def patch(self, request, pk):
-        vendor = VendorRepository().get_by_id(pk)
-        if not vendor:
-            return Response({"error": "Vendor not found."}, status=status.HTTP_404_NOT_FOUND)
-            
-        serializer = AdminVendorSerializer(vendor, data=request.data, partial=True, context={'request': request})
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data)
+        return Response(UpdateAdminVendorProfileAction().execute(pk, request.data, request))
 
 
 class AdminVendorStatusView(APIView):
@@ -138,6 +129,7 @@ class AdminVendorDocumentVerifyView(APIView):
                 serializer.validated_data.get("rejection_reason", ""),
                 request.user,
                 request=request,
+                expires_on=serializer.validated_data.get('expires_on'),
             )
         except ValueError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_404_NOT_FOUND)

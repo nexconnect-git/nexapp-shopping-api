@@ -16,7 +16,7 @@ from products.serializers.product_serializers import ProductSerializer, ProductL
 from products.serializers.image_serializers import ProductImageSerializer
 from products.data.product_repository import ProductRepository
 from products.data.image_repository import ProductImageRepository
-from products.actions.inventory import AddProductImageAction, UpdateStockAction
+from products.actions import AddProductImageAction, UpdateStockAction, ProductImageCommandAction
 from products.actions.approval import ProductApprovalPolicy
 from products.models import Product
 
@@ -95,22 +95,23 @@ class VendorProductImagesView(APIView):
 
     def get(self, request, pk):
         product = ProductRepository.get_by_id(pk)
-        if not product:
+        if not product or product.vendor_id != request.user.vendor_profile.id:
             return Response(status=status.HTTP_404_NOT_FOUND)
         images = ProductImageRepository.get_all(product)
         return Response(ProductImageSerializer(images, many=True).data)
 
     def post(self, request, pk):
         action = AddProductImageAction()
-        is_primary = request.data.get("is_primary", "false").lower() == "true"
-        is_ai = request.data.get("is_ai_generated", "false").lower() == "true"
+        is_primary = str(request.data.get("is_primary", "false")).lower() == "true"
+        is_ai = str(request.data.get("is_ai_generated", "false")).lower() == "true"
         try:
             image = action.execute(
                 product_id=pk,
                 vendor_id=request.user.vendor_profile.id,
                 image_file=request.FILES.get("image"),
                 is_primary=is_primary,
-                is_ai_generated=is_ai
+                is_ai_generated=is_ai,
+                inheritance_mode=request.data.get('inheritance_mode')
             )
             return Response(ProductImageSerializer(image).data, status=status.HTTP_201_CREATED)
         except ValueError as e:
@@ -120,36 +121,27 @@ class VendorProductImageDetailView(APIView):
     permission_classes = [IsAuthenticated, IsApprovedVendor]
 
     def delete(self, request, pk, img_pk):
-        img = ProductImageRepository.get_by_id(img_pk)
-        if img and str(img.product_id) == str(pk) and img.product.vendor_id == request.user.vendor_profile.id:
-            product = img.product
-            ProductImageRepository.delete(img)
-            if product.approval_status in {
-                Product.APPROVAL_STATUS_APPROVED,
-                Product.APPROVAL_STATUS_REJECTED,
-                Product.APPROVAL_STATUS_PENDING,
-            }:
-                update_fields = ProductApprovalPolicy.mark_requires_review(product, ["images"])
-                update_fields.append("updated_at")
-                product.save(update_fields=sorted(set(update_fields)))
-            return Response(status=status.HTTP_204_NO_CONTENT)
-        return Response(status=status.HTTP_404_NOT_FOUND)
+        ProductImageCommandAction().execute(request.user.vendor_profile.id, pk, 'delete', image_id=img_pk)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def patch(self, request, pk, img_pk):
+        if request.data != {'is_primary': True}:
+            return Response({'detail': 'Only setting an image as primary is supported.'}, status=status.HTTP_400_BAD_REQUEST)
+        image = ProductImageCommandAction().execute(request.user.vendor_profile.id, pk, 'primary', image_id=img_pk)
+        return Response(ProductImageSerializer(image, context={'request': request}).data)
 
 class VendorStockUpdateView(APIView):
     permission_classes = [IsAuthenticated, IsApprovedVendor]
 
     def patch(self, request, pk):
         action = UpdateStockAction()
-        try:
-            product = action.execute(
-                product_id=pk,
-                vendor_id=request.user.vendor_profile.id,
-                stock=request.data.get("stock"),
-                threshold=request.data.get("low_stock_threshold")
-            )
-            return Response(ProductSerializer(product).data)
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        product = action.execute(
+            product_id=pk,
+            vendor_id=request.user.vendor_profile.id,
+            stock=request.data.get("stock"),
+            threshold=request.data.get("low_stock_threshold")
+        )
+        return Response(ProductSerializer(product).data)
 
 class VendorLowStockView(generics.ListAPIView):
     permission_classes = [IsAuthenticated, IsApprovedVendor]
@@ -162,4 +154,4 @@ class AIImageGenerateView(APIView):
     permission_classes = [IsAuthenticated, IsApprovedVendor]
 
     def post(self, request):
-        return Response({"message": "Placeholder."})
+        return Response({'detail': 'Image generation is not configured.', 'code': 'provider_unavailable'}, status=status.HTTP_501_NOT_IMPLEMENTED)

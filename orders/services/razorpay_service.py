@@ -3,6 +3,7 @@
 import hashlib
 import hmac
 import logging
+from decimal import Decimal
 
 import razorpay
 from django.conf import settings
@@ -33,7 +34,7 @@ class RazorpayService:
         Raises:
             Exception: If the Razorpay API call fails.
         """
-        amount_paise = int(amount_inr * 100)
+        amount_paise = int(Decimal(str(amount_inr)) * 100)
         data = {
             'amount': amount_paise,
             'currency': currency,
@@ -74,6 +75,9 @@ class RazorpayService:
         except razorpay.errors.SignatureVerificationError:
             return False
 
+    def fetch_payment(self, payment_id: str) -> dict:
+        return _client().payment.fetch(payment_id)
+
     def create_refund(self, payment_id: str, amount_inr: float) -> dict:
         """Initiate a Razorpay refund for a captured payment.
 
@@ -84,7 +88,7 @@ class RazorpayService:
         Returns:
             Razorpay refund dict containing at least ``id``, ``amount``, ``status``.
         """
-        amount_paise = int(amount_inr * 100)
+        amount_paise = int(Decimal(str(amount_inr)) * 100)
         try:
             refund = _client().payment.refund(payment_id, {'amount': amount_paise, 'speed': 'normal'})
             logger.info("Razorpay refund initiated: %s for ₹%.2f", refund.get('id'), amount_inr)

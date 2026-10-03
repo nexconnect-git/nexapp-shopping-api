@@ -3,9 +3,12 @@ InvoiceRepository — all ORM queries for the Invoice model live here.
 """
 from django.db.models import Q, QuerySet
 from invoices.models import Invoice
+from vendors.data.base import BaseRepository
 
 
-class InvoiceRepository:
+class InvoiceRepository(BaseRepository):
+    def __init__(self):
+        super().__init__(Invoice)
     """Data-access layer for Invoice. Views and actions must never query the
     ORM directly — they go through this class."""
 

@@ -13,12 +13,12 @@ from helpers.delivery_quotes import quote_vendor_delivery
 from products.serializers import CategorySerializer, ProductSerializer
 from vendors.data import VendorProductRepository, VendorRepository
 from vendors.helpers.public_vendor_helpers import build_request_address
-from vendors.serializers.public import VendorSerializer
+from vendors.serializers.public import PublicVendorSerializer
 
 
 class VendorDetailView(generics.RetrieveAPIView):
     permission_classes = [AllowAny]
-    serializer_class = VendorSerializer
+    serializer_class = PublicVendorSerializer
 
     def get_queryset(self):
         return VendorRepository().filter(status='approved')
@@ -26,7 +26,7 @@ class VendorDetailView(generics.RetrieveAPIView):
     def retrieve(self, request, *args, **kwargs):
         return cached_api_response(
             request,
-            f'vendors:detail:{kwargs.get("pk")}',
+            f'vendors:public-v2:detail:{kwargs.get("pk")}',
             90,
             lambda: self._retrieve_uncached(request, *args, **kwargs),
             include_user=False,
@@ -35,7 +35,7 @@ class VendorDetailView(generics.RetrieveAPIView):
     def _retrieve_uncached(self, request, *args, **kwargs):
         vendor = self.get_object()
         fulfillment_node = active_fulfillment_node_for_request(request)
-        vendor_data = VendorSerializer(vendor, context={'request': request}).data
+        vendor_data = PublicVendorSerializer(vendor, context={'request': request}).data
         address = build_request_address(request)
         quote = quote_vendor_delivery(vendor, address) if address else None
         available_products = VendorProductRepository().get_customer_visible_for_vendor(

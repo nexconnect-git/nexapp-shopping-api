@@ -3,10 +3,14 @@ from typing import Dict, Any
 from django.db import transaction
 
 from products.models import Product, ProductImage
+from products.data.product_repository import ProductRepository
+from products.data.image_repository import ProductImageRepository
 from vendors.models import Vendor
 from products.actions.approval import ProductApprovalPolicy
 from products.actions.base import BaseAction
 from helpers.validators import validate_image_upload
+from rest_framework.exceptions import NotFound, ValidationError
+from vendors.data.stock_repository import VendorStockRepository
 
 logger = logging.getLogger(__name__)
 
@@ -57,45 +61,67 @@ class CreateVendorProductAction(BaseAction):
         return product
 
 
-class AddProductImageAction(BaseAction):
-    def execute(self, product_id: str, vendor_id: str, image_file, is_primary: bool, is_ai_generated: bool) -> ProductImage:
-        validate_image_upload(image_file, label="product image")
-        product = Product.objects.get(pk=product_id, vendor_id=vendor_id)
-        existing_count = product.images.count()
-
-        if existing_count >= 5:
-            raise ValueError("Maximum 5 images allowed per product.")
-
-        if is_ai_generated:
-            ai_count = product.images.filter(is_ai_generated=True).count()
-            if ai_count >= 2:
-                raise ValueError("Maximum 2 AI-generated images allowed per product.")
-
-        with transaction.atomic():
+class ProductImageCommandAction(BaseAction):
+    @transaction.atomic
+    def execute(self, vendor_id, product_id, command, image_id=None, image_file=None, is_primary=False, inheritance_mode=None):
+        product = ProductRepository.locked_by_vendor(vendor_id, product_id)
+        if not product:
+            raise NotFound('Product not found.')
+        if product.approval_status == Product.APPROVAL_STATUS_PENDING:
+            raise ValidationError('Images cannot change while the product is awaiting review.')
+        if inheritance_mode is not None and inheritance_mode not in {'base_image','vendor_image_only','mixed'}:
+            raise ValidationError('Choose a valid image source.')
+        repo = ProductImageRepository()
+        if command == 'add':
+            validate_image_upload(image_file, label='product image')
+            count = repo.count(product)
+            if count >= 5:
+                raise ValidationError('Maximum 5 vendor images allowed per product.')
             if is_primary:
-                product.images.filter(is_primary=True).update(is_primary=False)
+                repo.clear_primary(product)
+            image = repo.create(product, image_file, is_primary or count == 0, False, count)
+        else:
+            image = repo.get_by_id_and_product(image_id, product)
+            if not image:
+                raise NotFound('Image not found.')
+            if command == 'delete':
+                primary = image.is_primary
+                repo.delete(image)
+                if primary:
+                    repo.promote_next_to_primary(product)
+            elif command == 'primary':
+                repo.clear_primary(product)
+                repo.make_primary(image)
+            else:
+                raise ValidationError('Unsupported image action.')
+        fields = ['updated_at']
+        changes = ['images']
+        if inheritance_mode is not None and inheritance_mode != product.inheritance_mode:
+            product.inheritance_mode = inheritance_mode
+            fields.append('inheritance_mode')
+            changes.append('inheritance_mode')
+        if product.approval_status in {Product.APPROVAL_STATUS_APPROVED, Product.APPROVAL_STATUS_REJECTED}:
+            fields += ProductApprovalPolicy.mark_requires_review(product, changes)
+        ProductRepository.save_fields(product, fields)
+        return image
 
-            img = ProductImage.objects.create(
-                product=product,
-                image=image_file,
-                is_primary=is_primary or existing_count == 0,
-                is_ai_generated=is_ai_generated,
-                display_order=existing_count,
-            )
-            if product.approval_status in {
-                Product.APPROVAL_STATUS_APPROVED,
-                Product.APPROVAL_STATUS_REJECTED,
-                Product.APPROVAL_STATUS_PENDING,
-            }:
-                update_fields = ProductApprovalPolicy.mark_requires_review(product, ["images"])
-                update_fields.append("updated_at")
-                product.save(update_fields=sorted(set(update_fields)))
-        return img
+
+class AddProductImageAction(BaseAction):
+    def execute(self, product_id, vendor_id, image_file, is_primary=False, is_ai_generated=False, inheritance_mode=None):
+        if is_ai_generated:
+            raise ValidationError('AI image generation is unavailable.')
+        return ProductImageCommandAction().execute(vendor_id, product_id, 'add', image_file=image_file, is_primary=is_primary, inheritance_mode=inheritance_mode)
 
 
 class UpdateStockAction(BaseAction):
+    @transaction.atomic
     def execute(self, product_id: str, vendor_id: str, stock: int = None, threshold: int = None) -> Product:
-        product = Product.objects.get(pk=product_id, vendor_id=vendor_id)
+        for field, value in [('stock', stock), ('low_stock_threshold', threshold)]:
+            if value is not None and (type(value) is not int or not 0 <= value <= 2147483647):
+                raise ValidationError({field: 'Enter a non-negative whole number.'})
+        product = VendorStockRepository().locked(vendor_id, product_id)
+        if not product:
+            raise NotFound('Product not found.')
         update_fields = []
         if stock is not None:
             product.stock = stock
@@ -105,5 +131,5 @@ class UpdateStockAction(BaseAction):
             update_fields.append("low_stock_threshold")
         if update_fields:
             update_fields.append("updated_at")
-            product.save(update_fields=update_fields)
+            VendorStockRepository().save_fields(product, update_fields)
         return product

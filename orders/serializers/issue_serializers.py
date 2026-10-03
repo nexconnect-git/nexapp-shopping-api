@@ -47,6 +47,15 @@ class OrderIssueSerializer(serializers.ModelSerializer):
     order_number = serializers.CharField(source="order.order_number", read_only=True)
     issue_type_display = serializers.CharField(source="get_issue_type_display", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
+    assignee_name = serializers.CharField(source='assignee.get_full_name', read_only=True, default=None)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+        if not request or getattr(request.user, 'role', None) != 'admin':
+            for field in ('admin_notes', 'assignee', 'assignee_name', 'queue', 'priority', 'due_at', 'resolution_type'):
+                data.pop(field, None)
+        return data
 
     class Meta:
         model = OrderIssue
@@ -55,6 +64,7 @@ class OrderIssueSerializer(serializers.ModelSerializer):
             "issue_type", "issue_type_display", "description", "status", "status_display",
             "admin_notes", "refund_amount", "refund_method", "resolved_by", "resolved_at",
             "created_at", "updated_at", "messages", "attachments",
+            "assignee", "assignee_name", "queue", "priority", "due_at", "resolution_type",
         ]
         read_only_fields = [
             "id", "customer", "customer_name", "customer_username", "order_number",

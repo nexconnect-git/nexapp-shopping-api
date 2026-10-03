@@ -3,6 +3,7 @@ from products.actions.catalog.inheritance import (
     CreateVendorProductFromCatalogAction,
     DuplicateInheritedProductAction,
     SubmitInheritedProductBatchAction,
+    UpdateInheritedProductDraftAction,
 )
 from products.actions.catalog.proposals import (
     ApproveCatalogProposalItemAction,

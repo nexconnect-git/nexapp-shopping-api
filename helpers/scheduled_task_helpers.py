@@ -1,17 +1,27 @@
+from datetime import timezone
+
+
+def utc_job_timestamp(value):
+    """RQ stores naive UTC timestamps; include the offset for browser date parsing."""
+    if value is None:
+        return None
+    return (value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value).isoformat()
+
+
 TASK_REGISTRY = {
     'generate_vendor_payouts': {
-        'label': 'Process Vendor Payout',
-        'description': 'Process a pending vendor payout record.',
+        'label': 'Record Vendor Payment',
+        'description': 'Record an external payment against an approved vendor payout. No money is transferred.',
         'func': 'notifications.scheduled_tasks.generate_vendor_payouts',
-        'params': ['payout_id'],
+        'params': ['payout_id', 'transaction_ref'],
         'icon': 'storefront',
         'category': 'payouts',
     },
     'generate_delivery_payouts': {
-        'label': 'Process Delivery Payout',
-        'description': 'Process a pending delivery partner payout.',
+        'label': 'Record Delivery Payment',
+        'description': 'Record an external payment against an approved delivery payout. No money is transferred.',
         'func': 'notifications.scheduled_tasks.generate_delivery_payouts',
-        'params': ['payout_id'],
+        'params': ['payout_id', 'transaction_ref'],
         'icon': 'two_wheeler',
         'category': 'payouts',
     },
@@ -90,9 +100,12 @@ def serialize_job(job, scheduled_time=None):
         'category': meta.get('category', 'other'),
         'args': list(job.args or []),
         'kwargs': dict(job.kwargs or {}),
-        'scheduled_at': scheduled_time.isoformat() if scheduled_time else None,
-        'enqueued_at': job.enqueued_at.isoformat() if job.enqueued_at else None,
-        'status': status_str,
+        'scheduled_at': utc_job_timestamp(scheduled_time),
+        'enqueued_at': utc_job_timestamp(job.enqueued_at),
+        'status': 'scheduled' if scheduled_time else status_str,
+        'started_at': utc_job_timestamp(job.started_at),
+        'ended_at': utc_job_timestamp(job.ended_at),
+        'failure': 'Worker execution failed. Review server worker logs for the full traceback.' if job.exc_info else '',
         'description': meta.get('description', ''),
     }
 

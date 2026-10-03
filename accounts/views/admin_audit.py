@@ -21,6 +21,7 @@ class AdminAuditLogListView(generics.ListAPIView):
         return AdminAuditLogRepository.list(
             action=params.get('action'),
             entity_type=params.get('entity_type'),
+            entity_id=params.get('entity_id'),
             actor_id=params.get('actor'),
             search=params.get('search'),
         )

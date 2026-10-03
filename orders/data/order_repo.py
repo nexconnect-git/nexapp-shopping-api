@@ -1,8 +1,25 @@
 from django.db.models import Q
 from orders.models import Order, OrderTracking, OrderRating
+from vendors.data.base import BaseRepository
 
 
-class OrderRepository:
+class OrderRepository(BaseRepository):
+    def __init__(self):
+        super().__init__(Order)
+
+    @staticmethod
+    def get_locked(pk, **filters):
+        return Order.objects.select_for_update().get(pk=pk, **filters)
+
+    @staticmethod
+    def add_tracking(**kwargs):
+        return OrderTracking.objects.create(**kwargs)
+
+    @staticmethod
+    def has_active_deliveries(user):
+        return Order.objects.filter(
+            delivery_partner=user, status__in=['ready', 'picked_up', 'on_the_way'],
+        ).exists()
 
     @staticmethod
     def get_customer_orders(user, status_filter=None):

@@ -63,7 +63,7 @@ class DeliveryDashboardView(APIView):
                 "total_deliveries": partner.total_deliveries,
                 "total_earnings": str(partner.total_earnings),
                 "average_rating": str(partner.average_rating),
-                "active_orders": OrderSerializer(active_orders, many=True).data,
+                "active_orders": OrderSerializer(active_orders, many=True, context={'request': request}).data,
                 "partner_status": partner.status,
                 "is_approved": partner.is_approved,
             }
@@ -96,7 +96,7 @@ class AvailableOrdersView(APIView):
         nearby_orders = []
         for assignment in pending_qs:
             order = assignment.order
-            order_data = OrderSerializer(order).data
+            order_data = OrderSerializer(order, context={'request': request}).data
             if partner.current_latitude and partner.current_longitude and order.vendor.latitude and order.vendor.longitude:
                 dist = haversine(
                     float(partner.current_latitude),

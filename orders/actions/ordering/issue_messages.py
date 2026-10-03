@@ -2,6 +2,9 @@ import json
 
 from django.db import transaction
 from rest_framework.renderers import JSONRenderer
+from rest_framework.exceptions import PermissionDenied
+
+from accounts.admin_access import allows
 
 from backend.events import issue_message_added
 from orders.actions.base import BaseAction
@@ -13,6 +16,8 @@ class AddIssueMessageAction(BaseAction):
     @transaction.atomic
     def execute(self, issue_id, user, message_text) -> dict:
         is_admin = user.role == 'admin'
+        if is_admin and not allows(user, 'support.manage'):
+            raise PermissionDenied('Managing support is required to send a case message.')
         try:
             if is_admin:
                 issue = OrderIssue.objects.get(id=issue_id)

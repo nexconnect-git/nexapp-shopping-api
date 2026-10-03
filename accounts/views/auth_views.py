@@ -14,6 +14,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.utils import get_md5_hash_password
 
 from accounts.actions.auth_actions import (
     LoginAction,
@@ -25,7 +26,9 @@ from accounts.actions.auth_actions import (
     VerifyEmailAction,
 )
 from accounts.data.user_repository import UserRepository
-from accounts.helpers.token_helpers import clear_refresh_cookie, set_refresh_cookie
+from accounts.helpers.token_helpers import (
+    clear_refresh_cookie, refresh_token_from_request, requested_portal, set_refresh_cookie,
+)
 from accounts.serializers.user_serializers import UserProfileSerializer
 
 
@@ -49,7 +52,7 @@ class RegisterView(APIView):
             result = RegisterAction(data=request.data).execute()
             refresh_token = result['tokens']['refresh']
             response = Response(_without_refresh_token(result), status=status.HTTP_201_CREATED)
-            set_refresh_cookie(response, refresh_token)
+            set_refresh_cookie(response, refresh_token, result['user']['role'])
             return response
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -64,12 +67,15 @@ class LoginView(APIView):
     def post(self, request):
         username = request.data.get('username')
         password = request.data.get('password')
+        portal = requested_portal(request)
 
         try:
             result = LoginAction(username=username, password=password).execute()
+            if portal and result['user']['role'] != portal:
+                raise ValueError('This account cannot sign in to this portal.')
             refresh_token = result['tokens']['refresh']
             response = Response(_without_refresh_token(result))
-            set_refresh_cookie(response, refresh_token)
+            set_refresh_cookie(response, refresh_token, result['user']['role'])
             return response
         except ValueError as exc:
             msg = str(exc)
@@ -99,7 +105,7 @@ class VerifyLoginOTPView(APIView):
             result = VerifyMobileOTPAction(request.data, purpose='login').execute()
             refresh_token = result['tokens']['refresh']
             response = Response(_without_refresh_token(result))
-            set_refresh_cookie(response, refresh_token)
+            set_refresh_cookie(response, refresh_token, 'customer')
             return response
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -126,7 +132,7 @@ class VerifyRegisterOTPView(APIView):
             result = VerifyMobileOTPAction(request.data, purpose='register').execute()
             refresh_token = result['tokens']['refresh']
             response = Response(_without_refresh_token(result), status=status.HTTP_201_CREATED)
-            set_refresh_cookie(response, refresh_token)
+            set_refresh_cookie(response, refresh_token, 'customer')
             return response
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -168,18 +174,23 @@ class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        refresh_token = request.data.get('refresh') or request.COOKIES.get(settings.AUTH_REFRESH_COOKIE_NAME)
+        portal = requested_portal(request) or request.user.role
+        if portal != request.user.role:
+            return Response({'error': 'This account does not belong to the requested portal.'}, status=status.HTTP_403_FORBIDDEN)
+        refresh_token = refresh_token_from_request(request, portal)
         if not refresh_token:
             return Response({'error': 'Refresh token is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             token = RefreshToken(refresh_token)
+            if str(token.get(settings.SIMPLE_JWT['USER_ID_CLAIM'])) != str(request.user.id):
+                return Response({'error': 'Refresh token does not belong to this account.'}, status=status.HTTP_403_FORBIDDEN)
             token.blacklist()
         except Exception as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         response = Response({'detail': 'Logged out successfully.'}, status=status.HTTP_205_RESET_CONTENT)
-        clear_refresh_cookie(response)
+        clear_refresh_cookie(response, portal)
         return response
 
 
@@ -189,18 +200,27 @@ class CookieTokenRefreshView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        refresh_token = request.data.get('refresh') or request.COOKIES.get(settings.AUTH_REFRESH_COOKIE_NAME)
+        portal = requested_portal(request)
+        refresh_token = refresh_token_from_request(request, portal)
         if not refresh_token:
             return Response({'error': 'Refresh token is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
         user = None
         try:
-            user_id = RefreshToken(refresh_token).get(settings.SIMPLE_JWT['USER_ID_CLAIM'])
+            token = RefreshToken(refresh_token)
+            user_id = token.get(settings.SIMPLE_JWT['USER_ID_CLAIM'])
             if user_id:
-                user = UserProfileSerializer.Meta.model.objects.filter(pk=user_id).first()
+                user = UserRepository.get_by_id(user_id)
+            if not user or not user.is_active or (portal and user.role != portal):
+                return Response({'error': 'Refresh token does not belong to this portal.'}, status=status.HTTP_401_UNAUTHORIZED)
+            if settings.SIMPLE_JWT.get('CHECK_REVOKE_TOKEN') and token.get(settings.SIMPLE_JWT.get('REVOKE_TOKEN_CLAIM', 'hash_password')) != get_md5_hash_password(user.password):
+                response = Response({'error': 'Password changed. Sign in again.'}, status=status.HTTP_401_UNAUTHORIZED)
+                clear_refresh_cookie(response, portal)
+                return response
+            portal = user.role
         except TokenError:
             response = Response({'error': 'Refresh token is invalid or expired.'}, status=status.HTTP_401_UNAUTHORIZED)
-            clear_refresh_cookie(response)
+            clear_refresh_cookie(response, portal)
             return response
 
         serializer = TokenRefreshSerializer(data={'refresh': refresh_token})
@@ -208,7 +228,7 @@ class CookieTokenRefreshView(APIView):
             serializer.is_valid(raise_exception=True)
         except (InvalidToken, TokenError, ObjectDoesNotExist):
             response = Response({'error': 'Refresh token is invalid or expired.'}, status=status.HTTP_401_UNAUTHORIZED)
-            clear_refresh_cookie(response)
+            clear_refresh_cookie(response, portal)
             return response
 
         response_tokens = {'access': serializer.validated_data['access']}
@@ -218,7 +238,7 @@ class CookieTokenRefreshView(APIView):
             'user': UserProfileSerializer(user).data if user else None,
         })
         if rotated_refresh:
-            set_refresh_cookie(response, rotated_refresh)
+            set_refresh_cookie(response, rotated_refresh, portal)
         return response
 
 
