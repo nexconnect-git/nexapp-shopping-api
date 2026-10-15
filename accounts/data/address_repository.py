@@ -5,10 +5,14 @@ from django.db.models import QuerySet
 
 from accounts.models.address import Address
 from accounts.models.user import User
+from vendors.data.base import BaseRepository
 
 
-class AddressRepository:
+class AddressRepository(BaseRepository):
     """Encapsulates all database access for Address records."""
+
+    def __init__(self):
+        super().__init__(Address)
 
     # ── Single-object lookups ─────────────────────────────────────────────────
 
@@ -43,7 +47,7 @@ class AddressRepository:
     @staticmethod
     def get_for_user(user: User) -> QuerySet:
         """Return all addresses belonging to the given user."""
-        return Address.objects.filter(user=user)
+        return Address.objects.filter(user=user).order_by('-is_default', '-created_at', 'id')
 
     # ── Mutations ─────────────────────────────────────────────────────────────
 

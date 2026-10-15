@@ -31,3 +31,5 @@ __all__ = [
     'GetCustomerContentConfigAction',
     'RefreshCustomerRecommendationsAction',
 ]
+
+from orders.actions.reorder import ReorderAction

@@ -1,9 +1,10 @@
-from django.db.models import Q
+from django.db.models import F, Q
 
+from products.data.product_repository import ProductRepository
 from helpers.geo_helpers import haversine
 from helpers.state_normalization import normalize_state_identifier
 from vendors.data.base import BaseRepository
-from vendors.models import FulfillmentNode, FulfillmentNodeInventory, FulfillmentNodeServiceArea
+from vendors.models import FulfillmentNode, FulfillmentNodeInventory, FulfillmentNodeServiceArea, Vendor
 
 
 class FulfillmentNodeRepository(BaseRepository):
@@ -16,6 +17,10 @@ class FulfillmentNodeRepository(BaseRepository):
             .select_related("vendor")
             .prefetch_related("service_areas")
         )
+
+    @classmethod
+    def get_active_node(cls, node_id):
+        return cls.active_nodes().filter(pk=node_id).first()
 
     @classmethod
     def list(cls, status_filter=None, node_type=None, vendor_id=None, city=None, search=None):
@@ -152,6 +157,26 @@ class FulfillmentInventoryRepository(BaseRepository):
         return queryset
 
     @classmethod
+    def customer_vendors_for_node(cls, node):
+        """Actual merchants with customer-visible, unreserved node inventory."""
+        visible = {
+            f"products__{key}": value
+            for key, value in ProductRepository.customer_visible_filter().items()
+        }
+        return Vendor.objects.filter(
+            status="approved",
+            is_open=True,
+            is_accepting_orders=True,
+            products__category__is_active=True,
+            products__category__show_in_customer_ui=True,
+            products__fulfillment_inventory__node=node,
+            products__fulfillment_inventory__is_available=True,
+            products__fulfillment_inventory__stock__gt=0,
+            products__fulfillment_inventory__reserved_stock__lt=F("products__fulfillment_inventory__stock"),
+            **visible,
+        ).distinct()
+
+    @classmethod
     def available_for_nodes(cls, node_ids):
         return cls.model.objects.filter(
             node_id__in=node_ids,
@@ -168,7 +193,7 @@ class FulfillmentInventoryRepository(BaseRepository):
 
 
 class FulfillmentServiceAreaRepository(BaseRepository):
-    model = FulfillmentNodeServiceArea
+    model = FulfillmentNodeServiceArea, Vendor
 
     @classmethod
     def list(cls, node_id=None, is_active=None, city=None, search=None):

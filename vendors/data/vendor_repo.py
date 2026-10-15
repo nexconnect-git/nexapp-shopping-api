@@ -221,6 +221,8 @@ class VendorProductRepository(BaseRepository):
         sort_key = str(sort or "relevance").lower()
         if sort_key in {"price", "price_asc", "price_low_to_high"}:
             return qs.order_by("price", "category__display_order", "name")
+        if sort_key in {"-price", "price_desc", "price_high_to_low"}:
+            return qs.order_by("-price", "category__display_order", "name")
         if sort_key in {"rating", "top_rated"}:
             return qs.order_by("-average_rating", "-total_orders", "category__display_order", "name")
         if sort_key in {"popular", "popularity"}:

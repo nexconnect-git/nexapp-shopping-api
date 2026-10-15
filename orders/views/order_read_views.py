@@ -17,6 +17,7 @@ class OrderListView(generics.ListAPIView):
         return OrderRepository.get_customer_orders(
             self.request.user,
             self.request.query_params.get('status'),
+            self.request.query_params.get('search'),
         )
 
     def list(self, request, *args, **kwargs):
@@ -24,6 +25,8 @@ class OrderListView(generics.ListAPIView):
         response.data = {
             'count': len(response.data) if isinstance(response.data, list) else response.data.get('count', 0),
             'results': response.data if isinstance(response.data, list) else response.data.get('results', response.data),
+            'next': None if isinstance(response.data, list) else response.data.get('next'),
+            'previous': None if isinstance(response.data, list) else response.data.get('previous'),
             'summary': OrderRepository.get_customer_order_summary(request.user),
         }
         return response
@@ -42,7 +45,7 @@ class CancelOrderView(APIView):
 
     def post(self, request, pk):
         try:
-            order = CancelOrderAction().execute(str(pk), request.user)
+            order = CancelOrderAction().execute(str(pk), request.user, reason=request.data.get('reason', ''))
             return Response(OrderSerializer(order, context={'request': request}).data)
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)

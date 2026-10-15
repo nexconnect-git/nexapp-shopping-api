@@ -11,7 +11,10 @@ from orders.models.setting import PlatformSetting
 
 class CancelOrderAction(BaseAction):
     @transaction.atomic
-    def execute(self, order_id, user) -> Order:
+    def execute(self, order_id, user, reason="") -> Order:
+        reason = str(reason or "").strip()
+        if len(reason) > 500:
+            raise ValueError("Cancellation reason must be 500 characters or fewer.")
         try:
             order = OrderRepository.get_locked(order_id, customer=user)
         except Order.DoesNotExist:
@@ -37,7 +40,7 @@ class CancelOrderAction(BaseAction):
 
         order.status = 'cancelled'
         order.save(update_fields=['status', 'updated_at'])
-        OrderRepository.add_tracking(order=order, status='cancelled', description='Order cancelled by customer.')
+        OrderRepository.add_tracking(order=order, status='cancelled', description='Order cancelled by customer.' + (f' Reason: {reason}' if reason else ''))
         OrderCancellationEffectsAction().execute(order)
         order_cancelled.send(sender=Order, order=order)
         return order

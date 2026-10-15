@@ -197,27 +197,31 @@ class CustomerLocationMixin:
         serviceable = []
         instant = []
         for node in self.fulfillment_repository.active_nodes_for_address(address):
-            vendor = node.vendor
-            if not self.node_vendor_is_customer_visible(vendor):
-                continue
+            vendors = [node.vendor] if node.vendor_id else (
+                self.fulfillment_inventory_repository.customer_vendors_for_node(node)
+                if node.node_type in {"platform_dark_store", "hub"} else []
+            )
             try:
                 quote = quote_vendor_delivery(self.quote_origin_for_node(node), address)
             except Exception:
                 continue
             if not quote.is_serviceable:
                 continue
-            payload = VendorListSerializer(vendor, context={'request': request}).data
-            quote_payload = quote.as_dict()
-            quote_payload.update({
-                'vendor_id': str(vendor.id),
-                'vendor_name': vendor.store_name,
-                'fulfillment_node_id': str(node.id),
-                'fulfillment_node': self.node_payload(node, quote_payload),
-            })
-            payload.update(quote_payload)
-            serviceable.append(payload)
-            if quote.within_instant_radius:
-                instant.append(payload)
+            for vendor in vendors:
+                if not self.node_vendor_is_customer_visible(vendor):
+                    continue
+                payload = VendorListSerializer(vendor, context={'request': request}).data
+                quote_payload = quote.as_dict()
+                quote_payload.update({
+                    'vendor_id': str(vendor.id),
+                    'vendor_name': vendor.store_name,
+                    'fulfillment_node_id': str(node.id),
+                    'fulfillment_node': self.node_payload(node, quote_payload),
+                })
+                payload.update(quote_payload)
+                serviceable.append(payload)
+                if quote.within_instant_radius:
+                    instant.append(payload)
         return serviceable, instant
 
     def node_vendor_is_customer_visible(self, vendor) -> bool:

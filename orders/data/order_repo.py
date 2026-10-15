@@ -4,6 +4,10 @@ from vendors.data.base import BaseRepository
 
 
 class OrderRepository(BaseRepository):
+    @staticmethod
+    def lock_for_customer_receipt(order_id):
+        return Order.objects.select_for_update().get(pk=order_id)
+
     def __init__(self):
         super().__init__(Order)
 
@@ -22,9 +26,11 @@ class OrderRepository(BaseRepository):
         ).exists()
 
     @staticmethod
-    def get_customer_orders(user, status_filter=None):
+    def get_customer_orders(user, status_filter=None, search=None):
         active_statuses = ["placed", "confirmed", "preparing", "ready", "picked_up", "on_the_way"]
-        qs = Order.objects.filter(customer=user).prefetch_related("items").order_by("-placed_at")
+        qs = Order.objects.filter(customer=user).prefetch_related("items").order_by("-placed_at", "-id")
+        if search:
+            qs = qs.filter(Q(order_number__icontains=search) | Q(items__product_name__icontains=search) | Q(vendor__store_name__icontains=search)).distinct()
         if status_filter:
             if status_filter == "active":
                 qs = qs.filter(status__in=active_statuses)
@@ -50,6 +56,14 @@ class OrderRepository(BaseRepository):
         return Order.objects.filter(
             customer=user
         ).prefetch_related("items", "tracking").get(pk=pk)
+
+    @staticmethod
+    def reorder_items(order):
+        return list(order.items.all())
+
+    @staticmethod
+    def get_reorder_snapshot(user, pk):
+        return Order.objects.select_related('vendor').prefetch_related('items__product__vendor').get(customer=user, pk=pk)
 
     @staticmethod
     def get_by_id(pk, prefetch=None):

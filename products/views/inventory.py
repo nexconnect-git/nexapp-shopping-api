@@ -5,6 +5,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 
 from accounts.permissions import IsApprovedVendor
 from helpers.cache_helpers import cached_api_response
+from backend.actions.customer_flow.query_helpers import truthy_query_param
 from backend.actions.customer_flow.fulfillment_filters import (
     active_fulfillment_node_for_request,
     filter_products_for_fulfillment_node,
@@ -40,7 +41,8 @@ class ProductListView(generics.ListAPIView):
             vendor=self.request.query_params.get("vendor"),
             min_price=self.request.query_params.get("min_price"),
             max_price=self.request.query_params.get("max_price"),
-            is_available=True
+            is_available=True,
+            is_instant_delivery=True if truthy_query_param(self.request.query_params.get("instant_only")) else None,
         )
         return _filter_customer_products_for_request(self.request, queryset)
 

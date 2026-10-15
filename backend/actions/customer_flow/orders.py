@@ -3,6 +3,8 @@ from backend.actions.customer_flow.constants import ACTIVE_ORDER_STATUSES
 from backend.data import CustomerFlowRepository
 from orders.actions.checkout import available_slots_for_cart
 from orders.serializers import OrderSerializer
+from products.serializers import ProductListSerializer
+from rest_framework.exceptions import NotFound
 from vendors.serializers.public import VendorListSerializer
 
 
@@ -11,13 +13,18 @@ class GetCustomerOrderConfirmationAction:
 
     def execute(self, request, pk) -> dict:
         order = self.repository.order_confirmation_order(request.user, pk)
+        if order is None:
+            raise NotFound('This order could not be found.')
         eta = order.estimated_delivery_time
+        items = self.repository.order_confirmation_items(order)
+        product_serializer = ProductListSerializer(context={'request': request})
         return {
             'id': str(order.id),
             'order_number': order.order_number,
             'status': order.status,
             'payment_status': OrderSerializer().get_payment_status(order),
             'payment_method': order.payment_method,
+            'has_delivery_partner': bool(order.delivery_partner_id),
             'eta_label': f'{eta} min' if eta else '',
             'store': VendorListSerializer(order.vendor, context={'request': request}).data,
             'delivery_address': AddressSerializer(order.delivery_address).data if order.delivery_address else None,
@@ -28,9 +35,12 @@ class GetCustomerOrderConfirmationAction:
                     'name': item.product_name,
                     'quantity': item.quantity,
                     'subtotal': str(item.subtotal),
+                    'image': product_serializer.get_primary_image(item.product) if item.product else None,
                 }
-                for item in order.items.all()[:4]
+                for item in items[:4]
             ],
+            'items_count': sum(item.quantity for item in items),
+            'remaining_items_count': sum(item.quantity for item in items[4:]),
             'can_track': order.status in ACTIVE_ORDER_STATUSES,
             'can_cancel': order.status in ['placed', 'confirmed', 'preparing', 'ready'],
         }

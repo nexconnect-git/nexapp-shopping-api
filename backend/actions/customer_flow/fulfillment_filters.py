@@ -1,10 +1,9 @@
 from decimal import Decimal
 
-from django.db.models import F, Q
-
 from accounts.models import Address
 from helpers.delivery_quotes import quote_vendor_delivery
 from helpers.vendor_hours import is_vendor_open_now
+from products.data.product_repository import ProductRepository
 from vendors.data import FulfillmentNodeRepository
 from vendors.models import Vendor
 
@@ -51,16 +50,7 @@ def should_enforce_fulfillment_node_for_request(request) -> bool:
 
 
 def filter_products_for_fulfillment_node(queryset, node):
-    if not node:
-        return queryset
-    return queryset.filter(
-        fulfillment_inventory__node=node,
-        fulfillment_inventory__is_available=True,
-        fulfillment_inventory__stock__gt=0,
-    ).filter(
-        Q(fulfillment_inventory__reserved_stock__lt=F("fulfillment_inventory__stock"))
-        | Q(fulfillment_inventory__reserved_stock=0)
-    ).distinct()
+    return ProductRepository.for_fulfillment_node(queryset, node)
 
 
 def filter_products_for_serviceable_vendors(queryset, address):

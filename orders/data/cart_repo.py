@@ -1,7 +1,10 @@
 from orders.models import Cart, CartItem
+from vendors.data.base import BaseRepository
 
 
-class CartRepository:
+class CartRepository(BaseRepository):
+    def __init__(self):
+        super().__init__(Cart)
 
     @staticmethod
     def get_or_create_cart(user):

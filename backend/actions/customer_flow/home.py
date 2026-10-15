@@ -8,6 +8,7 @@ from helpers.delivery_quotes import quote_vendor_delivery
 from helpers.vendor_hours import is_vendor_open_now
 from products.data.category_repository import CategoryRepository
 from products.serializers import CategorySerializer, ProductListSerializer
+from vendors.data import FulfillmentInventoryRepository, FulfillmentNodeRepository
 from vendors.serializers.public import VendorListSerializer
 from orders.serializers.coupon_serializers import CouponSerializer
 
@@ -34,11 +35,18 @@ class GetCustomerFlowHomeAction(CustomerLocationMixin):
             recommendation_snapshot,
             self._nearby_stores(request, address),
         )
-        if fulfillment_node_id:
+        if fulfillment_node_id and fulfillment_vendor_id:
             stores = [
                 store for store in stores
                 if fulfillment_vendor_id and str(store.get('id')) == str(fulfillment_vendor_id)
             ]
+        elif fulfillment_node_id and fulfillment_node_type in ('hub', 'platform_dark_store'):
+            node = FulfillmentNodeRepository.get_active_node(fulfillment_node_id)
+            inventory_vendor_ids = {
+                str(vendor.id)
+                for vendor in FulfillmentInventoryRepository.customer_vendors_for_node(node)
+            } if node else set()
+            stores = [store for store in stores if str(store.get('id')) in inventory_vendor_ids]
         store_ids = [store.get('id') for store in stores]
         products = self._products(store_ids=store_ids, fulfillment_node_id=inventory_node_id)
         if not serviceability.get('is_serviceable'):
@@ -46,7 +54,7 @@ class GetCustomerFlowHomeAction(CustomerLocationMixin):
             categories = categories.none()
         coupons = self.repository.active_coupons()[:6] if is_serviceable else []
         active_order = GetCustomerActiveOrderAction().execute(request)['active_order']
-        category_cards = CategorySerializer(categories[:12], many=True, context={'request': request}).data
+        category_cards = CategorySerializer(categories[:12], many=True, context={'request': request, 'available_category_ids': category_ids}).data
         buy_again = GetCustomerBuyAgainAction().execute(request)['results']
         if not is_serviceable:
             buy_again = []

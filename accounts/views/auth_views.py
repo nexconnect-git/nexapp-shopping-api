@@ -93,7 +93,8 @@ class RequestLoginOTPView(APIView):
             result = RequestMobileOTPAction(request.data, purpose='login').execute()
             return Response(result)
         except ValueError as exc:
-            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            payload = exc.args[0] if exc.args and isinstance(exc.args[0], dict) else {'error': str(exc)}
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
 
 @method_decorator(ratelimit(key='ip', rate='20/h', method='POST', block=True), name='post')
@@ -108,7 +109,8 @@ class VerifyLoginOTPView(APIView):
             set_refresh_cookie(response, refresh_token, 'customer')
             return response
         except ValueError as exc:
-            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            payload = exc.args[0] if exc.args and isinstance(exc.args[0], dict) else {'error': str(exc)}
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
 
 @method_decorator(ratelimit(key='ip', rate='10/h', method='POST', block=True), name='post')
@@ -120,7 +122,8 @@ class RequestRegisterOTPView(APIView):
             result = RequestMobileOTPAction(request.data, purpose='register').execute()
             return Response(result)
         except ValueError as exc:
-            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            payload = exc.args[0] if exc.args and isinstance(exc.args[0], dict) else {'error': str(exc)}
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
 
 @method_decorator(ratelimit(key='ip', rate='10/h', method='POST', block=True), name='post')
@@ -135,7 +138,8 @@ class VerifyRegisterOTPView(APIView):
             set_refresh_cookie(response, refresh_token, 'customer')
             return response
         except ValueError as exc:
-            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            payload = exc.args[0] if exc.args and isinstance(exc.args[0], dict) else {'error': str(exc)}
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
 
 class SendVerificationEmailView(APIView):
@@ -148,7 +152,8 @@ class SendVerificationEmailView(APIView):
             SendVerificationEmailAction(request.user).execute()
             return Response({'detail': 'Verification email sent.'})
         except ValueError as exc:
-            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            payload = exc.args[0] if exc.args and isinstance(exc.args[0], dict) else {'error': str(exc)}
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
 
 class VerifyEmailView(APIView):

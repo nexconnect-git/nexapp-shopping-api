@@ -2,6 +2,7 @@ from rest_framework import status
 from accounts.admin_access import allows
 from uuid import UUID
 from rest_framework.exceptions import NotFound
+from django.db import transaction
 
 from invoices.data import InvoiceRepository
 from invoices.helpers import user_can_access_invoice
@@ -25,7 +26,23 @@ class GenerateInvoiceAction:
 
         serializer = InvoiceSerializer(data=data)
         serializer.is_valid(raise_exception=True)
-        invoice = InvoiceRepository.create(**serializer.validated_data)
+        if serializer.validated_data.get('invoice_type') == 'customer_receipt':
+            order = serializer.validated_data['order']
+            with transaction.atomic():
+                OrderRepository.lock_for_customer_receipt(order.pk)
+                existing = InvoiceRepository.customer_receipt_for_order(order.pk, order.customer_id)
+                if existing:
+                    if existing.pdf_file:
+                        return existing, None, status.HTTP_200_OK
+                    generated = generate_pdf_invoice(existing.pk)
+                    if generated:
+                        return generated, None, status.HTTP_200_OK
+                    return None, {'error': 'Failed to generate PDF'}, status.HTTP_500_INTERNAL_SERVER_ERROR
+                return self._create_invoice(serializer.validated_data)
+        return self._create_invoice(serializer.validated_data)
+
+    def _create_invoice(self, data):
+        invoice = InvoiceRepository.create(**data)
 
         updated_invoice = generate_pdf_invoice(invoice.id)
         if not updated_invoice:

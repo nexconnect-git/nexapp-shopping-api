@@ -17,6 +17,10 @@ class InvoiceRepository(BaseRepository):
     # ------------------------------------------------------------------
 
     @staticmethod
+    def customer_receipt_for_order(order_id, recipient_id):
+        return Invoice.objects.filter(order_id=order_id, recipient_id=recipient_id, invoice_type='customer_receipt').order_by('-issued_at').first()
+
+    @staticmethod
     def get_by_id(invoice_id) -> Invoice | None:
         """Return an Invoice by primary key, or None if not found."""
         try:

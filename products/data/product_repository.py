@@ -1,7 +1,7 @@
 """Repository for Product ORM queries."""
 
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Q
 
 from products.models.product import Product
 from helpers.repositories import BaseRepository
@@ -91,6 +91,21 @@ class ProductRepository(BaseRepository):
         return qs
 
     @staticmethod
+    def for_fulfillment_node(queryset, node):
+        if not node:
+            return queryset
+        if getattr(node, 'node_type', None) == 'vendor_store':
+            queryset = queryset.filter(vendor_id=node.vendor_id)
+        return queryset.filter(
+            fulfillment_inventory__node=node,
+            fulfillment_inventory__is_available=True,
+            fulfillment_inventory__stock__gt=0,
+        ).filter(
+            Q(fulfillment_inventory__reserved_stock__lt=F('fulfillment_inventory__stock'))
+            | Q(fulfillment_inventory__reserved_stock=0)
+        ).distinct()
+
+    @staticmethod
     def get_featured():
         """Return featured, available products."""
         return Product.objects.filter(
@@ -108,7 +123,7 @@ class ProductRepository(BaseRepository):
 
     @staticmethod
     def filter(category=None, vendor=None, search=None, min_price=None,
-               max_price=None, is_available=None):
+               max_price=None, is_available=None, is_instant_delivery=None):
         """Filter products by optional criteria.
 
         Args:
@@ -139,6 +154,8 @@ class ProductRepository(BaseRepository):
             qs = qs.filter(price__lte=max_price)
         if is_available is not None:
             qs = qs.filter(is_available=is_available)
+        if is_instant_delivery is not None:
+            qs = qs.filter(is_instant_delivery=is_instant_delivery)
         return qs
 
     @staticmethod

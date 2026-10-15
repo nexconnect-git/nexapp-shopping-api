@@ -281,6 +281,22 @@ class CreateOrdersFromCartAction(BaseAction):
                 "free_delivery_above": platform.free_delivery_above,
             }
 
+            if client_price_breakup:
+                current_breakup = public_price_breakup(price_preview)
+                charge_fields = (
+                    "item_subtotal", "coupon_discount", "delivery_fee", "platform_fee",
+                    "packaging_fee", "small_cart_fee", "tax_amount", "surge_fee", "final_payable",
+                )
+                if any(
+                    decimal_money(client_price_breakup.get(field)) != decimal_money(current_breakup[field])
+                    for field in charge_fields
+                ):
+                    raise ValueError({
+                        "code": "quote_changed",
+                        "error": "Your order charges changed. Review the updated quote before continuing.",
+                        "price_breakup": current_breakup,
+                    })
+
             order = Order.objects.create(
                 customer=user,
                 vendor=vendor,

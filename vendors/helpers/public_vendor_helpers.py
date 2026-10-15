@@ -119,6 +119,11 @@ def sort_vendor_cards(cards: list[dict], sort_key: str) -> list[dict]:
                 item.get('store_name', '').lower(),
             ),
         )
+    if sort_key == 'delivery_time':
+        return sorted(cards, key=lambda item: (
+            item.get('estimated_delivery_minutes') if item.get('estimated_delivery_minutes') is not None else float('inf'),
+            item.get('store_name', '').lower(),
+        ))
     if sort_key == 'distance':
         return sorted(
             cards,

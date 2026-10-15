@@ -1,12 +1,13 @@
+from decimal import Decimal, InvalidOperation
+
 from django.db.models import Q
 
-from backend.actions.customer_flow.home import GetCustomerFlowHomeAction
+from backend.actions.customer_flow.fulfillment_filters import active_fulfillment_node_for_request, filter_products_for_fulfillment_node
 from backend.actions.customer_flow.location import CustomerLocationMixin
 from backend.actions.customer_flow.query_helpers import (
     category_list_query,
     category_product_query,
     category_store_query,
-    truthy_query_param,
 )
 from backend.data import CustomerFlowRepository
 from helpers.delivery_quotes import quote_vendor_delivery
@@ -27,6 +28,11 @@ class GetCustomerExploreAction(CustomerLocationMixin):
         category = (request.query_params.get('category') or '').strip()
         products = self._product_queryset(query=query, category=category)
         stores = self._store_results(request, address, query=query, category=category)
+        node = active_fulfillment_node_for_request(request)
+        if node:
+            products = filter_products_for_fulfillment_node(products, node)
+            if node.node_type == 'vendor_store':
+                stores = [store for store in stores if str(store.get('id')) == str(node.vendor_id)]
         categories = self._category_queryset(query=query, category=category)
         if not serviceability.get('is_serviceable'):
             stores = []
@@ -35,19 +41,34 @@ class GetCustomerExploreAction(CustomerLocationMixin):
         elif address:
             store_ids = [store.get('id') for store in stores if store.get('id')]
             if store_ids:
-                products = products.filter(vendor_id__in=store_ids)
+                products = self.repository.products_for_vendors(products, store_ids)
             else:
                 products = products.none()
                 categories = categories.none()
         offers = self.repository.active_coupons()[:8] if serviceability.get('is_serviceable') else []
         products = self._apply_filters(products, request)
+        try:
+            page = max(1, int(request.query_params.get('page', 1)))
+        except (TypeError, ValueError):
+            page = 1
+        product_count = products.count()
+        category_count = categories.count()
+        product_start = (page - 1) * 24
+        other_start = (page - 1) * 12
+        has_more = (
+            product_count > product_start + 24
+            or len(stores) > other_start + 12
+            or category_count > other_start + 12
+        )
 
         return {
             'query': query,
             'serviceability': serviceability,
-            'categories': CategorySerializer(categories[:12], many=True, context={'request': request}).data,
-            'products': ProductListSerializer(products[:24], many=True, context={'request': request}).data,
-            'stores': stores[:12],
+            'categories': CategorySerializer(categories[other_start:other_start + 12], many=True, context={'request': request}).data,
+            'products': ProductListSerializer(products[product_start:product_start + 24], many=True, context={'request': request}).data,
+            'stores': stores[other_start:other_start + 12],
+            'page': page,
+            'next_page': page + 1 if has_more else None,
             'offers': CouponSerializer(offers, many=True).data,
             'suggestions': self._suggestions(query, categories),
             'filters': {
@@ -55,9 +76,9 @@ class GetCustomerExploreAction(CustomerLocationMixin):
                 'active': {key: request.query_params.get(key) for key in request.query_params.keys()},
             },
             'summary': {
-                'product_count': products.count(),
+                'product_count': product_count,
                 'store_count': len(stores),
-                'category_count': categories.count(),
+                'category_count': category_count,
             },
         }
 
@@ -95,30 +116,18 @@ class GetCustomerExploreAction(CustomerLocationMixin):
                     continue
                 payload.update(quote.as_dict())
             cards.append(payload)
+        limit = request.query_params.get('delivery_time')
+        if limit:
+            try:
+                minutes = Decimal(limit)
+                if minutes.is_finite() and minutes > 0:
+                    cards = [card for card in cards if card.get('estimated_delivery_minutes') is not None and Decimal(str(card['estimated_delivery_minutes'])) <= minutes]
+            except (InvalidOperation, TypeError, ValueError):
+                cards = []
         return sorted(cards, key=lambda item: item.get('estimated_delivery_minutes') or 999999)
 
     def _apply_filters(self, products, request):
-        if truthy_query_param(request.query_params.get('in_stock')):
-            products = products.filter(stock__gt=0)
-        if truthy_query_param(request.query_params.get('offers')):
-            products = products.filter(compare_price__gt=0)
-        min_price = request.query_params.get('min_price')
-        max_price = request.query_params.get('max_price')
-        rating = request.query_params.get('rating')
-        if min_price:
-            products = products.filter(price__gte=min_price)
-        if max_price:
-            products = products.filter(price__lte=max_price)
-        if rating:
-            products = products.filter(average_rating__gte=rating)
-        sort = request.query_params.get('sort')
-        if sort == 'price_low_high':
-            return products.order_by('price', 'name')
-        if sort == 'rating':
-            return products.order_by('-average_rating', '-total_orders')
-        if sort == 'offers':
-            return products.order_by('-compare_price', 'price')
-        return products
+        return self.repository.filtered_search_products(products, request.query_params)
 
     def _suggestions(self, query: str, categories) -> list[str]:
         if query:

@@ -1,6 +1,7 @@
 """Auth actions — orchestrate registration, login, mobile OTP auth, and email verification."""
 
 import logging
+import math
 import uuid
 import django_rq
 from django.contrib.auth import authenticate
@@ -8,6 +9,7 @@ from django.conf import settings
 from django.utils import timezone
 
 from accounts.data.user_repository import UserRepository
+from accounts.data.mobile_otp_repository import MobileOTPRepository
 from accounts.helpers.token_helpers import generate_tokens_for_user
 from accounts.models.email_verification import EmailVerification
 from accounts.models.mobile_otp import MobileOTP
@@ -126,7 +128,7 @@ def _build_customer_username(phone: str) -> str:
 
 
 def _generic_otp_response(phone: str) -> dict:
-    return {'detail': OTP_GENERIC_DETAIL, 'phone': phone}
+    return {'detail': OTP_GENERIC_DETAIL, 'phone': phone, 'resend_after_seconds': OTP_RESEND_COOLDOWN_SECONDS, 'expires_in_seconds': int(getattr(settings, 'OTP_EXPIRY_MINUTES', 10) or 10) * 60}
 
 
 class RequestMobileOTPAction:
@@ -164,20 +166,21 @@ class RequestMobileOTPAction:
         if self._purpose == MobileOTP.PURPOSE_REGISTER:
             email_for_otp = fallback_email
 
-        recent_cutoff = timezone.now() - timezone.timedelta(minutes=OTP_REQUEST_WINDOW_MINUTES)
-        recent_phone_count = MobileOTP.objects.filter(phone=phone, created_at__gte=recent_cutoff).count()
-        recent_email_count = MobileOTP.objects.filter(email=email_for_otp, created_at__gte=recent_cutoff).count()
-        if recent_phone_count >= OTP_MAX_REQUESTS_PER_PHONE or recent_email_count >= OTP_MAX_REQUESTS_PER_EMAIL:
-            raise ValueError('Too many OTP requests. Please try again later.')
+        now = timezone.now()
+        window = timezone.timedelta(minutes=OTP_REQUEST_WINDOW_MINUTES)
+        phone_requests, email_requests = MobileOTPRepository.recent_requests(phone, email_for_otp, now - window)
+        releases = []
+        for requests, maximum in [(phone_requests, OTP_MAX_REQUESTS_PER_PHONE), (email_requests, OTP_MAX_REQUESTS_PER_EMAIL)]:
+            if len(requests) >= maximum:
+                releases.append(requests[maximum - 1] + window)
+        if releases:
+            retry_after = max(1, math.ceil((max(releases) - now).total_seconds()))
+            raise ValueError({'error': 'Too many OTP requests. Please try again later.', 'code': 'otp_rate_limited', 'retry_after_seconds': retry_after})
 
-        latest = (
-            MobileOTP.objects
-            .filter(phone=phone, purpose=self._purpose, email=email_for_otp, is_used=False)
-            .order_by('-created_at')
-            .first()
-        )
-        if latest and latest.created_at > timezone.now() - timezone.timedelta(seconds=OTP_RESEND_COOLDOWN_SECONDS):
-            raise ValueError('Please wait before requesting another OTP.')
+        latest = MobileOTPRepository.latest_unused(phone, self._purpose, email_for_otp)
+        if latest and latest.created_at > now - timezone.timedelta(seconds=OTP_RESEND_COOLDOWN_SECONDS):
+            retry_after = max(1, math.ceil((latest.created_at + timezone.timedelta(seconds=OTP_RESEND_COOLDOWN_SECONDS) - now).total_seconds()))
+            raise ValueError({'error': 'Please wait before requesting another OTP.', 'code': 'otp_cooldown', 'retry_after_seconds': retry_after})
 
         _otp, code = MobileOTP.create_code(
             phone=phone,
@@ -225,14 +228,11 @@ class VerifyMobileOTPAction:
         phone = normalize_phone(payload['phone'])
         otp_code = payload['otp']
 
-        otp = (
-            MobileOTP.objects
-            .filter(phone=phone, purpose=self._purpose, is_used=False)
-            .order_by('-created_at')
-            .first()
-        )
+        otp = MobileOTPRepository.latest_unused(phone, self._purpose)
+        if otp and timezone.now() > otp.expires_at:
+            raise ValueError({'error': 'This verification code has expired. Request another code.', 'code': 'otp_expired'})
         if not otp or not otp.is_valid or not otp.matches(otp_code):
-            raise ValueError('Invalid or expired OTP.')
+            raise ValueError({'error': 'That verification code is not correct. Check the code and try again.', 'code': 'otp_invalid'})
 
         otp.is_used = True
         otp.save(update_fields=['is_used'])
