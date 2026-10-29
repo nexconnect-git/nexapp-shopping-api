@@ -17,6 +17,8 @@ class VendorOrderRepository(BaseRepository):
             qs = qs.filter(status=status_filter)
         qs = self._visible_to_vendor(qs, vendor)
         params = params or {}
+        if params.get('view') == 'history':
+            qs = qs.exclude(status__in=['placed', 'confirmed', 'preparing', 'ready', 'picked_up', 'on_the_way'])
         if params.get('search'):
             term = params['search']
             qs = qs.filter(Q(order_number__icontains=term) | Q(customer__first_name__icontains=term) | Q(customer__last_name__icontains=term) | Q(customer__username__icontains=term))

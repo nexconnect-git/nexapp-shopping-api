@@ -3,6 +3,7 @@ URL patterns for /api/admin/ — admin-only endpoints.
 All views enforce IsAdminRole permission internally.
 """
 from django.urls import path, include
+from support.views import AdminTicketListView, AdminTicketRespondView
 from vendors.views.payout_statement import AdminPayoutStatementView
 from vendors.views.finance_recipients import AdminFinanceRecipientsView, AdminVendorBankSummaryView, AdminPayoutEstimateView
 from backend.views.admin_console_views import AdminSupportAssigneesView, AdminAccountResetView, AdminConsoleIdentityView, AdminDispatchCommandView, AdminDispatchConsoleView, AdminFinanceSummaryView, AdminGlobalSearchView, AdminProfileContextView, AdminRuntimeReadinessView
@@ -227,7 +228,9 @@ urlpatterns = [
     path('feature-flags/<str:key>/', AdminFeatureFlagDetailView.as_view(), name='admin-feature-flag-detail'),
     path('settings/page-features/', AdminPageFeatureConfigView.as_view(), name='admin-page-feature-config'),
 
-    # Order Issues
+    # Support tickets and order issues
+    path('support/tickets/', AdminTicketListView.as_view(), name='admin-support-tickets'),
+    path('support/tickets/<uuid:pk>/respond/', AdminTicketRespondView.as_view(), name='admin-support-ticket-respond'),
     path('issues/', AdminOrderIssueListView.as_view(), name='admin-issues'),
     path('issues/<uuid:pk>/', AdminOrderIssueDetailView.as_view(), name='admin-issue-detail'),
     path('issues/<uuid:pk>/messages/', IssueMessageCreateView.as_view(), name='admin-issue-message'),

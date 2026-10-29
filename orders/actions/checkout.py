@@ -183,6 +183,11 @@ def validate_coupon_for_user(coupon_code: str, user, cart_total: Decimal) -> Cou
 
 def validate_schedule_slot(scheduled_for, vendor, items) -> None:
     if not scheduled_for:
+        if any(not item.product.is_instant_delivery for item in items):
+            raise ValueError({
+                "code": "instant_delivery_unavailable",
+                "error": "Some items require scheduled delivery. Remove them to place an ASAP order.",
+            })
         return
     if isinstance(scheduled_for, str):
         scheduled_for = parse_datetime(scheduled_for)

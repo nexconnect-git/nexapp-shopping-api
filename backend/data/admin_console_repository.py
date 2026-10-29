@@ -20,6 +20,28 @@ class AdminConsoleRepository(BaseRepository):
         super().__init__(Order)
 
     @staticmethod
+    def needs_attention_filter():
+        return (
+            Q(status='placed')
+            | Q(status='ready', delivery_partner__isnull=True)
+            | Q(dispatch_escalated_at__isnull=False)
+            | Q(issues__status__in=['open', 'assigned', 'in_review', 'investigating',
+                                   'waiting_customer', 'waiting_vendor', 'waiting_partner',
+                                   'escalated', 'resolution_pending'])
+            | (Q(payment_method='razorpay', is_payment_verified=False)
+               & ~Q(status__in=['delivered', 'cancelled']))
+        )
+
+    @staticmethod
+    def order_summary(queryset):
+        return queryset.aggregate(
+            total=Count('id', distinct=True),
+            new=Count('id', filter=Q(status='placed'), distinct=True),
+            active=Count('id', filter=Q(status__in=['placed', 'confirmed', 'preparing', 'ready', 'picked_up', 'on_the_way']), distinct=True),
+            needs_attention=Count('id', filter=AdminConsoleRepository.needs_attention_filter(), distinct=True),
+        )
+
+    @staticmethod
     def orders():
         return Order.objects.select_related('customer', 'vendor__user', 'delivery_partner__delivery_profile', 'delivery_address', 'assignment').prefetch_related('items', 'tracking', 'invoices', 'rating').order_by('-placed_at')
 
@@ -63,6 +85,8 @@ class AdminConsoleRepository(BaseRepository):
             qs = qs.filter(status__in=['picked_up', 'on_the_way'])
         if params.get('escalated') == '1':
             qs = qs.filter(dispatch_escalated_at__isnull=False)
+        if params.get('needs_attention'):
+            qs = qs.filter(AdminConsoleRepository.needs_attention_filter()).distinct()
         ordering = params.get('ordering', '-placed_at')
         if ordering in ('placed_at', '-placed_at', 'total', '-total', 'status', '-status', 'order_number', '-order_number'):
             qs = qs.order_by(ordering, 'id')

@@ -30,7 +30,8 @@ class GetCustomerFlowHomeAction(CustomerLocationMixin):
             fulfillment_node=fulfillment_node_id,
         )
         categories = CategoryRepository.get_customer_visible(category_ids=category_ids)
-        recommendation_snapshot = self.repository.recommendation_snapshot(request.user)
+        simple_layout = request.query_params.get('layout') == 'simple'
+        recommendation_snapshot = None if simple_layout else self.repository.recommendation_snapshot(request.user)
         stores = self._snapshot_ranked_stores(
             recommendation_snapshot,
             self._nearby_stores(request, address),
@@ -47,6 +48,27 @@ class GetCustomerFlowHomeAction(CustomerLocationMixin):
                 for vendor in FulfillmentInventoryRepository.customer_vendors_for_node(node)
             } if node else set()
             stores = [store for store in stores if str(store.get('id')) in inventory_vendor_ids]
+        if simple_layout:
+            category_cards = CategorySerializer(
+                categories[:12] if is_serviceable else categories.none(),
+                many=True,
+                context={'request': request, 'available_category_ids': category_ids},
+            ).data
+            nearby_stores = stores[:12] if is_serviceable else []
+            return {
+                'location': self.location_payload(request, serviceability),
+                'serviceability': serviceability,
+                'active_order': GetCustomerActiveOrderAction().execute(request)['active_order'],
+                'categories': category_cards,
+                'nearby_stores': nearby_stores,
+                'buy_again': [], 'flash_deals': [], 'recommended_products': [],
+                'banners': [], 'coupons': [], 'hero': None,
+                'recommendations_generated_at': None,
+                'sections': [
+                    self._section('categories', 'Shop by category', category_cards, 'category_grid'),
+                    self._section('nearby_stores', 'Stores near you', nearby_stores, 'store_rail'),
+                ],
+            }
         store_ids = [store.get('id') for store in stores]
         products = self._products(store_ids=store_ids, fulfillment_node_id=inventory_node_id)
         if not serviceability.get('is_serviceable'):

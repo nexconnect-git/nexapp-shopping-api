@@ -8,6 +8,7 @@ from orders.models import Order, OrderIssue, PlatformSetting
 
 
 class AdminOrderFilterSerializer(serializers.Serializer):
+    needs_attention = serializers.BooleanField(required=False)
     status = serializers.ChoiceField(choices=Order.STATUS_CHOICES, required=False, allow_blank=True)
     search = serializers.CharField(required=False, allow_blank=True, max_length=200)
     vendor = serializers.UUIDField(required=False)

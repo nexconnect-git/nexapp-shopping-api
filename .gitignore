@@ -60,3 +60,8 @@ staticfiles/
 # Agent files
 .agent/
 .codex-artifacts/
+
+# Focused marketplace regression suite
+!tests/
+!tests/__init__.py
+!tests/test_simplified_marketplace.py

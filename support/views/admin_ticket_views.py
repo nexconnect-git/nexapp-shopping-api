@@ -4,7 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.permissions import IsAdminRole
+from accounts.permissions import HasAdminPermission
 from support.actions import AdminRespondToTicketAction
 from support.data import SupportTicketRepository
 from support.serializers import SupportTicketSerializer
@@ -13,7 +13,8 @@ from support.serializers import SupportTicketSerializer
 class AdminTicketListView(generics.ListAPIView):
     """GET /api/admin/support/tickets/."""
 
-    permission_classes = [IsAuthenticated, IsAdminRole]
+    permission_classes = [IsAuthenticated, HasAdminPermission]
+    required_admin_permission = 'support.view'
     serializer_class = SupportTicketSerializer
     pagination_class = PageNumberPagination
 
@@ -27,7 +28,9 @@ class AdminTicketListView(generics.ListAPIView):
 class AdminTicketRespondView(APIView):
     """PATCH /api/admin/support/tickets/<pk>/respond/."""
 
-    permission_classes = [IsAuthenticated, IsAdminRole]
+    permission_classes = [IsAuthenticated, HasAdminPermission]
+
+    required_admin_permission = 'support.manage'
 
     def patch(self, request, pk):
         ticket = SupportTicketRepository.get_by_id(pk)

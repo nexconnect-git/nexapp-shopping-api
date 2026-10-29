@@ -40,7 +40,9 @@ class AdminOrderListView(generics.ListAPIView):
         queryset = self.get_queryset()
         paginator = AdminOrderPagination()
         page = paginator.paginate_queryset(queryset, request)
-        return paginator.get_paginated_response(OrderSerializer(page, many=True, context={'request': request}).data)
+        response = paginator.get_paginated_response(OrderSerializer(page, many=True, context={'request': request}).data)
+        response.data['summary'] = AdminConsoleRepository.order_summary(queryset)
+        return response
 
 
 class AdminOrderDetailView(APIView):
